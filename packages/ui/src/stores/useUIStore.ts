@@ -708,6 +708,14 @@ interface UIStore {
     subtask: { title: string; message: string };
   };
 
+  // Per-channel sound effects (which events play which sound, and whether at all)
+  soundsAgentEnabled: boolean;
+  soundsAgentSoundId: string;
+  soundsPermissionsEnabled: boolean;
+  soundsPermissionsSoundId: string;
+  soundsErrorsEnabled: boolean;
+  soundsErrorsSoundId: string;
+
   // Summarization settings
   summarizeLastMessage: boolean;
   summaryThreshold: number;   // chars — messages longer than this get summarized
@@ -883,6 +891,12 @@ interface UIStore {
   setNotificationTemplates: (
     templates: UIStore['notificationTemplates'] | ((current: UIStore['notificationTemplates']) => UIStore['notificationTemplates']),
   ) => void;
+  setSoundsAgentEnabled: (value: boolean) => void;
+  setSoundsAgentSoundId: (value: string) => void;
+  setSoundsPermissionsEnabled: (value: boolean) => void;
+  setSoundsPermissionsSoundId: (value: string) => void;
+  setSoundsErrorsEnabled: (value: boolean) => void;
+  setSoundsErrorsSoundId: (value: string) => void;
   setSummarizeLastMessage: (value: boolean) => void;
   setSummaryThreshold: (value: number) => void;
   setSummaryLength: (value: number) => void;
@@ -1037,6 +1051,14 @@ export const useUIStore = create<UIStore>()(
           question: { ...EMPTY_NOTIFICATION_TEMPLATES.question },
           subtask: { ...EMPTY_NOTIFICATION_TEMPLATES.subtask },
         },
+
+        // Per-channel sound effects — defaults match opencode's sound system.
+        soundsAgentEnabled: true,
+        soundsAgentSoundId: 'staplebops-01',
+        soundsPermissionsEnabled: true,
+        soundsPermissionsSoundId: 'staplebops-02',
+        soundsErrorsEnabled: true,
+        soundsErrorsSoundId: 'nope-03',
 
         // Summarization settings
         summarizeLastMessage: false,
@@ -2251,6 +2273,13 @@ export const useUIStore = create<UIStore>()(
               : templates,
           }));
         },
+
+        setSoundsAgentEnabled: (value) => { set({ soundsAgentEnabled: value }); },
+        setSoundsAgentSoundId: (value) => { set({ soundsAgentSoundId: value }); },
+        setSoundsPermissionsEnabled: (value) => { set({ soundsPermissionsEnabled: value }); },
+        setSoundsPermissionsSoundId: (value) => { set({ soundsPermissionsSoundId: value }); },
+        setSoundsErrorsEnabled: (value) => { set({ soundsErrorsEnabled: value }); },
+        setSoundsErrorsSoundId: (value) => { set({ soundsErrorsSoundId: value }); },
         setSummarizeLastMessage: (value) => { set({ summarizeLastMessage: value }); },
         setSummaryThreshold: (value) => { set({ summaryThreshold: value }); },
         setSummaryLength: (value) => { set({ summaryLength: value }); },
@@ -2585,6 +2614,12 @@ export const useUIStore = create<UIStore>()(
           notifyOnError: state.notifyOnError,
           notifyOnQuestion: state.notifyOnQuestion,
           notificationTemplates: state.notificationTemplates,
+          soundsAgentEnabled: state.soundsAgentEnabled,
+          soundsAgentSoundId: state.soundsAgentSoundId,
+          soundsPermissionsEnabled: state.soundsPermissionsEnabled,
+          soundsPermissionsSoundId: state.soundsPermissionsSoundId,
+          soundsErrorsEnabled: state.soundsErrorsEnabled,
+          soundsErrorsSoundId: state.soundsErrorsSoundId,
           summarizeLastMessage: state.summarizeLastMessage,
           summaryThreshold: state.summaryThreshold,
           summaryLength: state.summaryLength,

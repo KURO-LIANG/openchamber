@@ -51,6 +51,8 @@ import { useTodosPersistStore } from "@/stores/useTodosPersistStore"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { toast } from "@/components/ui"
 import { appendNotification } from "./notification-store"
+import { playSoundById } from "@/utils/sound"
+import { useUIStore } from "@/stores/useUIStore"
 import { applyGlobalSessionStatusEvent, applyGlobalSessionStatusSnapshot, useGlobalSessionStatusStore } from "./global-session-status"
 import type { State } from "./types"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
@@ -1547,6 +1549,15 @@ export function handleEvent(
       return
     }
 
+    // Sound effects are gated on the app being visible: hidden windows rely on
+    // system notifications (visibility-gated by the notification runtime) instead.
+    if (typeof document === "undefined" || document.visibilityState === "visible") {
+      const sounds = useUIStore.getState()
+      if (sounds.soundsPermissionsEnabled) {
+        void playSoundById(sounds.soundsPermissionsSoundId)
+      }
+    }
+
     const isViewed = isViewedInCurrentSession(resolvedDirectory, permission.sessionID)
     showPermissionNeededToast({
       permission,
@@ -1610,6 +1621,16 @@ export function handleEvent(
     if (session && (session as { parentID?: string }).parentID) {
       // subtask — skip notification
     } else if (sessionID) {
+      // Play the matching sound effect for top-level sessions only, and only
+      // while the app is visible; hidden windows rely on system notifications.
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        const sounds = useUIStore.getState()
+        if (payload.type === "session.idle" && sounds.soundsAgentEnabled) {
+          void playSoundById(sounds.soundsAgentSoundId)
+        } else if (payload.type === "session.error" && sounds.soundsErrorsEnabled) {
+          void playSoundById(sounds.soundsErrorsSoundId)
+        }
+      }
       appendNotification({
         directory: resolvedDirectory,
         session: sessionID,

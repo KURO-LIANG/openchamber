@@ -1263,7 +1263,6 @@ const maybeShowNativeNotification = (rawInput) => {
     title,
     body,
     silent: false,
-    ...(process.platform === 'darwin' ? { sound: 'Glass' } : {}),
   });
 
   activeNotifications.add(notification);
