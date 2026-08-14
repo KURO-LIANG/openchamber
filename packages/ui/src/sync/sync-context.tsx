@@ -1583,6 +1583,14 @@ export function handleEvent(
   if (payload.type === "question.asked") {
     const question = payload.properties as QuestionRequest
     const sessionID = question.sessionID
+    // Sound effects are gated on the app being visible: hidden windows rely on
+    // system notifications (visibility-gated by the notification runtime) instead.
+    if (typeof document === "undefined" || document.visibilityState === "visible") {
+      const sounds = useUIStore.getState()
+      if (sounds.soundsQuestionsEnabled) {
+        void playSoundById(sounds.soundsQuestionsSoundId)
+      }
+    }
     const toastKey = getQuestionToastKey(sessionID, question.id)
     const isViewed = isViewedInCurrentSession(resolvedDirectory, sessionID)
     if (!isViewed && toastKey && !pendingQuestionToastIds.has(toastKey)) {

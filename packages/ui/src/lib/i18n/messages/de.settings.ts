@@ -2128,6 +2128,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "Ton abspielen, wenn eine Berechtigung erforderlich ist.",
   'settings.notifications.page.sounds.errors.title': "Fehler",
   'settings.notifications.page.sounds.errors.description': "Ton abspielen, wenn ein Fehler auftritt.",
+  'settings.notifications.page.sounds.questions.title': "Fragen",
+  'settings.notifications.page.sounds.questions.description': "Ton abspielen, wenn der Agent dir eine Frage stellt.",
   'settings.notifications.page.sounds.option.none': "Keine",
   "sound.option.alert01": "Alarm 01",
   "sound.option.alert02": "Alarm 02",

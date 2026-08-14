@@ -715,6 +715,8 @@ interface UIStore {
   soundsPermissionsSoundId: string;
   soundsErrorsEnabled: boolean;
   soundsErrorsSoundId: string;
+  soundsQuestionsEnabled: boolean;
+  soundsQuestionsSoundId: string;
 
   // Summarization settings
   summarizeLastMessage: boolean;
@@ -897,6 +899,8 @@ interface UIStore {
   setSoundsPermissionsSoundId: (value: string) => void;
   setSoundsErrorsEnabled: (value: boolean) => void;
   setSoundsErrorsSoundId: (value: string) => void;
+  setSoundsQuestionsEnabled: (value: boolean) => void;
+  setSoundsQuestionsSoundId: (value: string) => void;
   setSummarizeLastMessage: (value: boolean) => void;
   setSummaryThreshold: (value: number) => void;
   setSummaryLength: (value: number) => void;
@@ -1059,6 +1063,8 @@ export const useUIStore = create<UIStore>()(
         soundsPermissionsSoundId: 'staplebops-02',
         soundsErrorsEnabled: true,
         soundsErrorsSoundId: 'nope-03',
+        soundsQuestionsEnabled: true,
+        soundsQuestionsSoundId: 'alert-01',
 
         // Summarization settings
         summarizeLastMessage: false,
@@ -2280,6 +2286,8 @@ export const useUIStore = create<UIStore>()(
         setSoundsPermissionsSoundId: (value) => { set({ soundsPermissionsSoundId: value }); },
         setSoundsErrorsEnabled: (value) => { set({ soundsErrorsEnabled: value }); },
         setSoundsErrorsSoundId: (value) => { set({ soundsErrorsSoundId: value }); },
+        setSoundsQuestionsEnabled: (value) => { set({ soundsQuestionsEnabled: value }); },
+        setSoundsQuestionsSoundId: (value) => { set({ soundsQuestionsSoundId: value }); },
         setSummarizeLastMessage: (value) => { set({ summarizeLastMessage: value }); },
         setSummaryThreshold: (value) => { set({ summaryThreshold: value }); },
         setSummaryLength: (value) => { set({ summaryLength: value }); },
@@ -2620,6 +2628,8 @@ export const useUIStore = create<UIStore>()(
           soundsPermissionsSoundId: state.soundsPermissionsSoundId,
           soundsErrorsEnabled: state.soundsErrorsEnabled,
           soundsErrorsSoundId: state.soundsErrorsSoundId,
+          soundsQuestionsEnabled: state.soundsQuestionsEnabled,
+          soundsQuestionsSoundId: state.soundsQuestionsSoundId,
           summarizeLastMessage: state.summarizeLastMessage,
           summaryThreshold: state.summaryThreshold,
           summaryLength: state.summaryLength,

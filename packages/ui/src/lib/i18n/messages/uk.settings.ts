@@ -2137,6 +2137,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "Відтворювати звук, коли потрібен дозвіл.",
   'settings.notifications.page.sounds.errors.title': "Помилки",
   'settings.notifications.page.sounds.errors.description': "Відтворювати звук, коли виникає помилка.",
+  'settings.notifications.page.sounds.questions.title': "Запитання",
+  'settings.notifications.page.sounds.questions.description': "Відтворювати звук, коли агент ставить вам запитання.",
   'settings.notifications.page.sounds.option.none': "Немає",
   "sound.option.alert01": "Тривога 01",
   "sound.option.alert02": "Тривога 02",

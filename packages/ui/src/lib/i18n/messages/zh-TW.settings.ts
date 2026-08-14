@@ -2137,6 +2137,8 @@
   'settings.notifications.page.sounds.permissions.description': "當需要權限時播放聲音。",
   'settings.notifications.page.sounds.errors.title': "錯誤",
   'settings.notifications.page.sounds.errors.description': "發生錯誤時播放聲音。",
+  'settings.notifications.page.sounds.questions.title': "問題",
+  'settings.notifications.page.sounds.questions.description': "當智能體向你提問時播放聲音。",
   'settings.notifications.page.sounds.option.none': "無",
   "sound.option.alert01": "警報 01",
   "sound.option.alert02": "警報 02",

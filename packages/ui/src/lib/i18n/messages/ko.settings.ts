@@ -2137,6 +2137,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "권한이 필요할 때 소리 재생.",
   'settings.notifications.page.sounds.errors.title': "오류",
   'settings.notifications.page.sounds.errors.description': "오류가 발생했을 때 소리 재생.",
+  'settings.notifications.page.sounds.questions.title': "질문",
+  'settings.notifications.page.sounds.questions.description': "에이전트가 질문할 때 소리 재생.",
   'settings.notifications.page.sounds.option.none': "없음",
   "sound.option.alert01": "알림 01",
   "sound.option.alert02": "알림 02",

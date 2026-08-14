@@ -2137,6 +2137,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "Reproducir sonido cuando se requiera un permiso.",
   'settings.notifications.page.sounds.errors.title': "Errores",
   'settings.notifications.page.sounds.errors.description': "Reproducir sonido cuando ocurra un error.",
+  'settings.notifications.page.sounds.questions.title': "Preguntas",
+  'settings.notifications.page.sounds.questions.description': "Reproducir sonido cuando el agente te haga una pregunta.",
   'settings.notifications.page.sounds.option.none': "Ninguno",
   "sound.option.alert01": "Alerta 01",
   "sound.option.alert02": "Alerta 02",

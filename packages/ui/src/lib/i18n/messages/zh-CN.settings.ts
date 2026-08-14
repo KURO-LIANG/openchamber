@@ -2137,6 +2137,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "当需要权限时播放声音。",
   'settings.notifications.page.sounds.errors.title': "错误",
   'settings.notifications.page.sounds.errors.description': "发生错误时播放声音。",
+  'settings.notifications.page.sounds.questions.title': "问题",
+  'settings.notifications.page.sounds.questions.description': "当智能体向你提问时播放声音。",
   'settings.notifications.page.sounds.option.none': "无",
   "sound.option.alert01": "警报 01",
   "sound.option.alert02": "警报 02",

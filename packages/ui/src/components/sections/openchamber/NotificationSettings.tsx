@@ -54,50 +54,65 @@ const TEMPLATE_EVENT_LABEL_KEYS = {
 
 const SOUND_NONE_VALUE = 'none';
 
-type SoundChannelKind = 'agent' | 'permissions' | 'errors';
+type SoundChannelKind = 'agent' | 'permissions' | 'errors' | 'questions';
 
 const SOUND_CHANNEL_TITLE_KEYS = {
   agent: 'settings.notifications.page.sounds.agent.title',
   permissions: 'settings.notifications.page.sounds.permissions.title',
   errors: 'settings.notifications.page.sounds.errors.title',
+  questions: 'settings.notifications.page.sounds.questions.title',
 } as const satisfies Record<SoundChannelKind, string>;
 
 const SOUND_CHANNEL_DESCRIPTION_KEYS = {
   agent: 'settings.notifications.page.sounds.agent.description',
   permissions: 'settings.notifications.page.sounds.permissions.description',
   errors: 'settings.notifications.page.sounds.errors.description',
+  questions: 'settings.notifications.page.sounds.questions.description',
 } as const satisfies Record<SoundChannelKind, string>;
+
+type UIState = ReturnType<typeof useUIStore.getState>;
+
+type SoundChannelFields = {
+  enabled: (state: UIState) => boolean;
+  soundId: (state: UIState) => string;
+  setEnabled: (state: UIState) => (value: boolean) => void;
+  setSoundId: (state: UIState) => (value: string) => void;
+};
+
+const SOUND_CHANNEL_FIELDS: Record<SoundChannelKind, SoundChannelFields> = {
+  agent: {
+    enabled: (state) => state.soundsAgentEnabled,
+    soundId: (state) => state.soundsAgentSoundId,
+    setEnabled: (state) => state.setSoundsAgentEnabled,
+    setSoundId: (state) => state.setSoundsAgentSoundId,
+  },
+  permissions: {
+    enabled: (state) => state.soundsPermissionsEnabled,
+    soundId: (state) => state.soundsPermissionsSoundId,
+    setEnabled: (state) => state.setSoundsPermissionsEnabled,
+    setSoundId: (state) => state.setSoundsPermissionsSoundId,
+  },
+  errors: {
+    enabled: (state) => state.soundsErrorsEnabled,
+    soundId: (state) => state.soundsErrorsSoundId,
+    setEnabled: (state) => state.setSoundsErrorsEnabled,
+    setSoundId: (state) => state.setSoundsErrorsSoundId,
+  },
+  questions: {
+    enabled: (state) => state.soundsQuestionsEnabled,
+    soundId: (state) => state.soundsQuestionsSoundId,
+    setEnabled: (state) => state.setSoundsQuestionsEnabled,
+    setSoundId: (state) => state.setSoundsQuestionsSoundId,
+  },
+};
 
 const SoundChannelRow: React.FC<{ kind: SoundChannelKind }> = ({ kind }) => {
   const { t } = useI18n();
-  const enabled = useUIStore((state) => (
-    kind === 'agent'
-      ? state.soundsAgentEnabled
-      : kind === 'permissions'
-        ? state.soundsPermissionsEnabled
-        : state.soundsErrorsEnabled
-  ));
-  const soundId = useUIStore((state) => (
-    kind === 'agent'
-      ? state.soundsAgentSoundId
-      : kind === 'permissions'
-        ? state.soundsPermissionsSoundId
-        : state.soundsErrorsSoundId
-  ));
-  const setEnabled = useUIStore((state) => (
-    kind === 'agent'
-      ? state.setSoundsAgentEnabled
-      : kind === 'permissions'
-        ? state.setSoundsPermissionsEnabled
-        : state.setSoundsErrorsEnabled
-  ));
-  const setSoundId = useUIStore((state) => (
-    kind === 'agent'
-      ? state.setSoundsAgentSoundId
-      : kind === 'permissions'
-        ? state.setSoundsPermissionsSoundId
-        : state.setSoundsErrorsSoundId
-  ));
+  const fields = SOUND_CHANNEL_FIELDS[kind];
+  const enabled = useUIStore(fields.enabled);
+  const soundId = useUIStore(fields.soundId);
+  const setEnabled = useUIStore(fields.setEnabled);
+  const setSoundId = useUIStore(fields.setSoundId);
 
   const previewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopCurrentRef = React.useRef<(() => void) | null>(null);
@@ -183,6 +198,7 @@ const SoundsSection: React.FC = () => {
         <SoundChannelRow kind="agent" />
         <SoundChannelRow kind="permissions" />
         <SoundChannelRow kind="errors" />
+        <SoundChannelRow kind="questions" />
       </div>
     </SettingsSection>
   );

@@ -2129,6 +2129,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "Odtwórz dźwięk, gdy wymagane jest uprawnienie.",
   'settings.notifications.page.sounds.errors.title': "Błędy",
   'settings.notifications.page.sounds.errors.description': "Odtwórz dźwięk, gdy wystąpi błąd.",
+  'settings.notifications.page.sounds.questions.title': "Pytania",
+  'settings.notifications.page.sounds.questions.description': "Odtwórz dźwięk, gdy agent zada Ci pytanie.",
   'settings.notifications.page.sounds.option.none': "Brak",
   "sound.option.alert01": "Alarm 01",
   "sound.option.alert02": "Alarm 02",

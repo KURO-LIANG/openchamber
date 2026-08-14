@@ -2137,6 +2137,8 @@ export const settingsDict = {
   'settings.notifications.page.sounds.permissions.description': "権限が必要な場合に音を再生します。",
   'settings.notifications.page.sounds.errors.title': "エラー",
   'settings.notifications.page.sounds.errors.description': "エラーが発生した場合に音を再生します。",
+  'settings.notifications.page.sounds.questions.title': "質問",
+  'settings.notifications.page.sounds.questions.description': "エージェントから質問があった場合に音を再生します。",
   'settings.notifications.page.sounds.option.none': "なし",
   "sound.option.alert01": "アラート 01",
   "sound.option.alert02": "アラート 02",
