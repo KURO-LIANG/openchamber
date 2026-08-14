@@ -1971,6 +1971,8 @@ export const dict = {
   'chat.chatInput.toast.attachmentsTooLarge': 'Anhänge sind zu groß zum Senden. Bitte versuche, die Anzahl oder Größe der Bilder zu reduzieren.',
   'chat.chatInput.toast.sendAttachmentsFailed': 'Fehler beim Senden der Anhänge. Versuche weniger Dateien oder kleinere Bilder.',
   'chat.chatInput.toast.messageSendFailed': 'Nachricht konnte nicht gesendet werden. Anhänge wurden wiederhergestellt.',
+  'chat.chatInput.toast.questionDismissFailed': 'Offene Frage konnte nicht geschlossen werden. Bitte beantworte sie zuerst und versuche es erneut.',
+  'chat.chatInput.toast.permissionDismissFailed': 'Offene Berechtigung konnte nicht geschlossen werden. Bitte behandle sie zuerst und versuche es erneut.',
   'chat.chatInput.toast.clipboardAttachFailed': 'Fehler beim Anhängen des Bildes aus der Zwischenablage',
   'chat.chatInput.toast.addedFileMentions': '{count} Datei(er) hinzugefügt',
   'chat.chatInput.toast.attachFileFailed': 'Fehler beim Anhängen der Datei',

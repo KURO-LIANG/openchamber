@@ -1028,7 +1028,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                 sessionActions.dismissOpenPermissionsForSession(currentSessionId),
                 sessionActions.dismissOpenQuestionsForSession(currentSessionId),
             ]);
-            if (deniedPermissions || dismissedQuestions) {
+            // A dismissal that failed for a reason other than not-found rolls
+            // the prompt back into the store (see session-actions). Do not
+            // queue the message here: the server keeps the turn busy until the
+            // prompt is answered, so a queued send would wait for an idle state
+            // that never comes. Keep the draft and let the user handle the
+            // prompt first.
+            if (dismissedQuestions.failed) {
+                toast.error(t('chat.chatInput.toast.questionDismissFailed'));
+                return;
+            }
+            if (deniedPermissions.failed) {
+                toast.error(t('chat.chatInput.toast.permissionDismissFailed'));
+                return;
+            }
+            if (deniedPermissions.dismissed || dismissedQuestions.dismissed) {
                 handleQueueMessage();
                 return;
             }

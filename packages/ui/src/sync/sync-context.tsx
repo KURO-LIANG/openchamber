@@ -1352,7 +1352,16 @@ async function resyncDirectoryAfterReconnect(
 ) {
   const current = store.getState()
   const candidateSessionIds = getActiveSessionCandidateIds(directory, current)
-  if (candidateSessionIds.length === 0) return
+  if (candidateSessionIds.length === 0) {
+    // No live session candidates (no busy status, trailing turn, or parent
+    // links), but locally known blocking requests still need reconciliation
+    // against the server: a pending question/permission asked during the gap
+    // must not strand its session. Skip the heavier session snapshot work;
+    // resync blocking requests with its own candidate aggregation (session /
+    // message / status / question / permission keys, no-op when empty).
+    await resyncBlockingRequestsForDirectory(directory, store)
+    return
+  }
 
   await resyncDirectorySessionStatuses(directory, store, candidateSessionIds, "authoritative")
 
