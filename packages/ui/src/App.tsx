@@ -56,6 +56,7 @@ import { useI18n } from '@/lib/i18n';
 import { applyMobileKeyboardMode } from '@/lib/mobileKeyboardMode';
 import { isEmbeddedSessionChat } from '@/components/layout/contextPanelEmbeddedChat';
 import { SyncAppEffects } from '@/apps/AppEffects';
+import { PetOverlayBridge } from '@/components/chat/pets/PetOverlayBridge';
 import { resetAppForRuntimeEndpointChange } from '@/apps/runtimeEndpointReset';
 import { useAppFontEffects } from '@/apps/useAppFontEffects';
 import { OpenCodeUpdateToast } from '@/components/update/OpenCodeUpdateToast';
@@ -923,6 +924,7 @@ function App({ apis }: AppProps) {
               <TooltipProvider delayDuration={300} skipDelayDuration={150}>
                 <div className={isDesktopRuntime ? 'h-full text-foreground bg-transparent' : 'h-full text-foreground bg-background'}>
                   <SyncAppEffects embeddedBackgroundWorkEnabled={embeddedBackgroundWorkEnabled} />
+                  <PetOverlayBridge />
                   <OpenCodeUpdateToast />
                   <MainLayout />
                   <Toaster />

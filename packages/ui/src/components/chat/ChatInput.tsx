@@ -4,6 +4,8 @@ import { ComposerDictation } from '@/components/dictation/ComposerDictation';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { createMessageQueueTarget, getMessageQueueKey, useMessageQueueStore, type QueuedMessage } from '@/stores/messageQueueStore';
+import { changePetPreference } from './pets/petPreference';
+import { PetPickerDialog } from './pets/PetPickerDialog';
 import { useAutoReviewStore } from '@/stores/useAutoReviewStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSelectionStore } from '@/sync/selection-store';
@@ -341,6 +343,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const currentManagementSessionId = currentSessionId;
     const [reviewDialogOpen, setReviewDialogOpen] = React.useState(false);
     const [reviewFlowSubmitting, setReviewFlowSubmitting] = React.useState(false);
+    const [petsPickerOpen, setPetsPickerOpen] = React.useState(false);
 
     const currentProviderId = useConfigStore((state) => state.currentProviderId);
     const currentModelId = useConfigStore((state) => state.currentModelId);
@@ -547,7 +550,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const availableSkills = useSkillsStore((s) => s.skills);
     const knownSlashNames = React.useMemo(() => {
         const names = new Set<string>([
-            'init', 'review', 'undo', 'redo', 'timeline', 'compact', 'summary', 'workspace-review', 'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
+            'init', 'review', 'undo', 'redo', 'timeline', 'compact', 'pets', 'summary', 'workspace-review', 'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
         ]);
         if (!isMobile && !isVSCodeRuntime()) names.add('handoff-review');
         for (const command of availableCommands) names.add(command.name.toLowerCase());
@@ -1150,6 +1153,20 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                     await opencodeClient.summarizeSession(currentSessionId, currentProviderId, currentModelId, compactDirectory);
                 } catch (error) {
                     toast.error(getSubmitErrorMessage(error, t('chat.chatInput.toast.compactFailed')));
+                }
+                return;
+            }
+            if (commandName === 'pets') {
+                const petArgument = argument.trim().toLowerCase();
+                if (petArgument === 'off' || petArgument === 'hide' || petArgument === 'disabled' || petArgument === 'none') {
+                    useUIStore.getState().setShowPet(false);
+                } else if (petArgument) {
+                    changePetPreference(petArgument);
+                    if (!useUIStore.getState().showPet) {
+                        useUIStore.getState().setShowPet(true);
+                    }
+                } else {
+                    setPetsPickerOpen(true);
                 }
                 return;
             }
@@ -2858,6 +2875,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
             projectDirectory={currentSessionDirectoryForSync ?? currentDirectory ?? null}
             submitting={reviewFlowSubmitting}
             onConfirm={handleStartReviewFlow}
+        />
+        <PetPickerDialog
+            open={petsPickerOpen}
+            onClose={() => setPetsPickerOpen(false)}
         />
         {attachmentPreviewMounted ? (
             <React.Suspense fallback={null}>

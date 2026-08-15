@@ -9,6 +9,7 @@ import {
   parseFilesystemErrorReason,
 } from '@openchamber/ui/lib/api/files-errors';
 import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
+import { getDesktopBridge } from '@openchamber/ui/lib/desktop';
 
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 
@@ -272,6 +273,33 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
 
     const result = await response.json().catch(() => ({}));
     return { success: Boolean((result as { success?: boolean }).success) };
+  },
+
+  async openDialog(options) {
+    const bridge = getDesktopBridge();
+    if (!bridge?.openDialog) {
+      throw new Error('File dialogs are not available in this runtime');
+    }
+    const result = await bridge.openDialog(options as Record<string, unknown>);
+    const dialogResult = result as { canceled?: boolean; filePaths?: string[] };
+    return {
+      canceled: Boolean(dialogResult?.canceled),
+      filePaths: Array.isArray(dialogResult?.filePaths) ? dialogResult.filePaths : [],
+    };
+  },
+
+  async copyDirectory(srcPath, destPath) {
+    const bridge = getDesktopBridge();
+    if (!bridge?.invoke) {
+      throw new Error('Directory copy is not available in this runtime');
+    }
+    const src = normalizePath(srcPath);
+    const dest = normalizePath(destPath);
+    const result = await bridge.invoke('desktop_copy_directory', { src, dest });
+    return {
+      success: Boolean((result as { success?: boolean }).success),
+      path: typeof (result as { path?: string }).path === 'string' ? normalizePath((result as { path: string }).path) : dest,
+    };
   },
 
   async downloadFile(path: string): Promise<void> {

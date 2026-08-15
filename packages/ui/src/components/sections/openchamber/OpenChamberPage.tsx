@@ -1,5 +1,6 @@
 import React from 'react';
 import { OpenChamberVisualSettings } from './OpenChamberVisualSettings';
+import { PetsSettings } from './PetsSettings';
 import { AboutSettings } from './AboutSettings';
 import { SessionRetentionSettings } from './SessionRetentionSettings';
 import { PasskeySettings } from './PasskeySettings';
@@ -82,6 +83,8 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
                 return <VoiceSectionContent />;
             case 'tunnel':
                 return <TunnelSectionContent />;
+            case 'pets':
+                return <PetsSectionContent />;
             default:
                 return null;
         }
@@ -98,6 +101,7 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
         notifications: t('settings.page.notifications.title'),
         voice: t('settings.page.voice.title'),
         tunnel: t('settings.page.tunnel.title'),
+        pets: t('settings.page.pets.title'),
     }[section];
 
     const pageDescription = {
@@ -111,6 +115,7 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
         notifications: t('settings.page.notifications.description'),
         voice: t('settings.page.voice.description'),
         tunnel: t('settings.page.tunnel.description'),
+        pets: t('settings.page.pets.description'),
     }[section];
 
     return (
@@ -252,4 +257,8 @@ const TunnelSectionContent: React.FC = () => {
         return null;
     }
     return <TunnelSettings />;
+};
+
+const PetsSectionContent: React.FC = () => {
+    return <PetsSettings />;
 };

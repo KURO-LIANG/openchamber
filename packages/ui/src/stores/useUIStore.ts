@@ -731,6 +731,10 @@ interface UIStore {
   inputSpellcheckEnabled: boolean;
   wideChatLayoutEnabled: boolean;
   codeBlockLineWrap: boolean;
+  /** Whether the pet companion may render at all. Persisted, cross-runtime. */
+  showPet: boolean;
+  /** Scale factor for the pet companion and its speech bubbles. 0.5-1.5. */
+  petSize: number;
   showToolFileIcons: boolean;
   showTurnChangedFiles: boolean;
   showExpandedBashTools: boolean;
@@ -911,6 +915,8 @@ interface UIStore {
   setInputSpellcheckEnabled: (value: boolean) => void;
   setWideChatLayoutEnabled: (value: boolean) => void;
   setCodeBlockLineWrap: (value: boolean) => void;
+  setShowPet: (value: boolean) => void;
+  setPetSize: (value: number) => void;
   setShowToolFileIcons: (value: boolean) => void;
   setShowTurnChangedFiles: (value: boolean) => void;
   setShowExpandedBashTools: (value: boolean) => void;
@@ -960,6 +966,8 @@ export const useUIStore = create<UIStore>()(
         workStatusExpandedSections: {},
         workStatusScrollTop: 0,
         workStatusPanelEnabled: true,
+        showPet: true,
+        petSize: 1,
         workStatusPanelVisible: false,
         workStatusPanelFits: false,
         workStatusOverlayOpen: false,
@@ -2310,6 +2318,12 @@ export const useUIStore = create<UIStore>()(
         setCodeBlockLineWrap: (value) => {
           set({ codeBlockLineWrap: value });
         },
+        setShowPet: (value) => {
+          set({ showPet: value });
+        },
+        setPetSize: (value) => {
+          set({ petSize: Math.max(0.5, Math.min(1.5, value)) });
+        },
         setShowToolFileIcons: (value) => {
           set({ showToolFileIcons: value });
         },
@@ -2405,7 +2419,7 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createDeferredSafeJSONStorage(),
-        version: 13,
+        version: 15,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
@@ -2546,6 +2560,16 @@ export const useUIStore = create<UIStore>()(
             state.autoSaveEnabled = true;
           }
 
+          if (typeof state.showPet !== 'boolean') {
+            state.showPet = true;
+          }
+
+          if (typeof state.petSize !== 'number' || !Number.isFinite(state.petSize)) {
+            state.petSize = 1;
+          } else {
+            state.petSize = Math.max(0.5, Math.min(1.5, state.petSize));
+          }
+
           state.contextRailOrder = Array.isArray(state.contextRailOrder)
             ? (state.contextRailOrder as unknown[]).filter((id): id is string => typeof id === 'string' && id.trim() !== '')
             : [];
@@ -2641,6 +2665,8 @@ export const useUIStore = create<UIStore>()(
           wideChatLayoutEnabled: state.wideChatLayoutEnabled,
           codeBlockLineWrap: state.codeBlockLineWrap,
           showToolFileIcons: state.showToolFileIcons,
+          showPet: state.showPet,
+          petSize: state.petSize,
           showTurnChangedFiles: state.showTurnChangedFiles,
           showExpandedBashTools: state.showExpandedBashTools,
           showExpandedEditTools: state.showExpandedEditTools,

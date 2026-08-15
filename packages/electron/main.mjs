@@ -265,6 +265,9 @@ const state = {
   windowGeometryRevisions: new Map(),
   windowGeometryTimers: new Map(),
   miniChatWindowsBySession: new Map(),
+  petOverlayWindow: null,
+  petOverlayLastPayload: null,
+  petOverlayPositionTimer: null,
   sshStatuses: new Map(),
   sshLogs: new Map(),
   trayController: null,
@@ -394,6 +397,14 @@ const prepareForQuit = ({ installingUpdate = false } = {}) => {
     } catch {
     }
   }
+
+  if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+    try {
+      state.petOverlayWindow.destroy();
+    } catch {
+    }
+  }
+  state.petOverlayWindow = null;
 
   setDesktopKeepAwakeActive(false);
 
@@ -2826,6 +2837,193 @@ const createMiniChatWindow = async ({ mode, sessionId = '', directory = '', proj
   return browserWindow;
 };
 
+// ---------------------------------------------------------------------------
+// Pet overlay window: a transparent, frameless, always-on-top window that
+// floats the pet above every other application on the desktop. The renderer
+// (pet-overlay.html) draws the pet and its status bubble; this process owns
+// the window lifecycle, its position, and the replay of the latest display
+// payload (pet id, state, size, preview) pushed by the main window's bridge.
+//
+// The UI keeps the same bubble-space constant in PetOverlay.tsx
+// (PET_OVERLAY_BUBBLE_SPACE_HEIGHT); keep the two in sync.
+// ---------------------------------------------------------------------------
+
+const PET_OVERLAY_BUBBLE_SPACE_HEIGHT = 96;
+const PET_OVERLAY_BASE_DISPLAY_HEIGHT = 96;
+const PET_OVERLAY_BUBBLE_MAX_WIDTH = 320;
+const PET_OVERLAY_DEFAULT_POSITION = { x: 24, y: 24 };
+const PET_OVERLAY_STATES = new Set(['running', 'needs-input', 'ready', 'blocked']);
+
+const buildPetOverlayUrl = () => {
+  const base = shouldUsePackagedUi()
+    ? buildPackagedUiUrl('/pet-overlay.html')
+    : (state.localOrigin || state.sidecarUrl);
+  if (!base) {
+    throw new Error('Local UI is not available');
+  }
+  return new URL(shouldUsePackagedUi() ? base : '/pet-overlay.html', base).toString();
+};
+
+const sanitizePetOverlayPayload = (args) => {
+  const candidate = args && typeof args === 'object' ? args : {};
+  const petId = typeof candidate.petId === 'string' && candidate.petId ? String(candidate.petId).slice(0, 200) : 'codex';
+  const stateName = PET_OVERLAY_STATES.has(candidate.state) ? candidate.state : 'ready';
+  const rawSize = Number(candidate.petSize);
+  const petSize = Number.isFinite(rawSize) ? Math.max(0.5, Math.min(1.5, rawSize)) : 1;
+  const preview = typeof candidate.preview === 'string' ? String(candidate.preview).slice(0, 2000) : null;
+  return { petId, state: stateName, petSize, preview };
+};
+
+const clampPetOverlayPosition = (saved, width, height) => {
+  const x = Math.round(Number(saved?.x));
+  const y = Math.round(Number(saved?.y));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return { ...PET_OVERLAY_DEFAULT_POSITION };
+  }
+  try {
+    const display = screen.getDisplayMatching({ x, y, width, height }) || screen.getPrimaryDisplay();
+    const workArea = display.workArea;
+    const maxX = Math.max(workArea.x, workArea.x + workArea.width - width);
+    const maxY = Math.max(workArea.y, workArea.y + workArea.height - height);
+    return {
+      x: Math.min(Math.max(x, workArea.x), maxX),
+      y: Math.min(Math.max(y, workArea.y), maxY),
+    };
+  } catch {
+    return { x, y };
+  }
+};
+
+const readPetOverlayPosition = (width, height) => {
+  const saved = readSettingsRoot().desktopPetOverlayPosition;
+  return clampPetOverlayPosition(saved && typeof saved === 'object' ? saved : null, width, height);
+};
+
+const persistPetOverlayPosition = (browserWindow) => {
+  if (!browserWindow || browserWindow.isDestroyed()) return;
+  const [x, y] = browserWindow.getPosition();
+  const bounds = browserWindow.getBounds();
+  const clamped = clampPetOverlayPosition({ x, y }, bounds.width, bounds.height);
+  return mutateSettingsRoot((root) => {
+    root.desktopPetOverlayPosition = { x: clamped.x, y: clamped.y };
+  });
+};
+
+const debouncePetOverlayPositionPersist = (browserWindow) => {
+  if (state.petOverlayPositionTimer) {
+    clearTimeout(state.petOverlayPositionTimer);
+  }
+  state.petOverlayPositionTimer = setTimeout(() => {
+    state.petOverlayPositionTimer = null;
+    void persistPetOverlayPosition(browserWindow).catch(() => {});
+  }, 300);
+};
+
+const resizePetOverlayWindow = (browserWindow, petSize) => {
+  if (!browserWindow || browserWindow.isDestroyed()) return;
+  const size = Number.isFinite(Number(petSize)) ? Math.max(0.5, Math.min(1.5, Number(petSize))) : 1;
+  const height = Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * size) + PET_OVERLAY_BUBBLE_SPACE_HEIGHT;
+  const width = Math.max(PET_OVERLAY_BUBBLE_MAX_WIDTH, Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * size * 192 / 208) + 24);
+  browserWindow.setSize(width, height);
+};
+
+const sendPetOverlayUpdate = (browserWindow, payload) => {
+  if (!browserWindow || browserWindow.isDestroyed()) return;
+  browserWindow.webContents.send('openchamber:emit', {
+    event: 'pet-overlay-update',
+    detail: payload,
+  });
+};
+
+const createPetOverlayWindow = async () => {
+  if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+    return state.petOverlayWindow;
+  }
+
+  const petSize = Number.isFinite(Number(state.petOverlayLastPayload?.petSize))
+    ? state.petOverlayLastPayload.petSize
+    : 1;
+  const height = Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * petSize) + PET_OVERLAY_BUBBLE_SPACE_HEIGHT;
+  const width = Math.max(PET_OVERLAY_BUBBLE_MAX_WIDTH, Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * petSize * 192 / 208) + 24);
+  const position = readPetOverlayPosition(width, height);
+
+  const desktopLocalOrigin = state.localOrigin || '';
+  const desktopHome = os.homedir() || '';
+  const browserWindow = new BrowserWindow({
+    title: 'OpenChamber Pet',
+    width,
+    height,
+    x: position.x,
+    y: position.y,
+    show: false,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: false,
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      additionalArguments: [
+        `--openchamber-local-origin=${desktopLocalOrigin}`,
+        `--openchamber-home=${desktopHome}`,
+        `--openchamber-macos-major=${macosMajorVersion()}`,
+      ],
+      preload: isDev ? path.join(__dirname, 'preload.mjs') : path.join(app.getAppPath(), 'preload.mjs'),
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      // sandbox must stay off: the preload uses contextBridge + ipcRenderer.
+      sandbox: false,
+    },
+  });
+  browserWindow.__ocPetOverlay = true;
+  state.petOverlayWindow = browserWindow;
+
+  // Highest practical level: above fullscreen apps and other windows.
+  browserWindow.setAlwaysOnTop(true, 'screen-saver');
+  if (process.platform === 'darwin') {
+    browserWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+
+  browserWindow.on('closed', () => {
+    if (state.petOverlayWindow?.id === browserWindow.id) {
+      state.petOverlayWindow = null;
+    }
+  });
+  browserWindow.on('move', () => {
+    debouncePetOverlayPositionPersist(browserWindow);
+  });
+  browserWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  browserWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const target = new URL(url);
+      const local = new URL(shouldUsePackagedUi() ? packagedUiOrigin() : (state.localOrigin || state.sidecarUrl || ''));
+      if (target.origin === local.origin) return;
+    } catch {
+    }
+    event.preventDefault();
+  });
+
+  await navigateWindow(browserWindow, buildPetOverlayUrl());
+
+  // Replay the latest payload (if any) once the page is ready so the overlay
+  // never renders stale defaults.
+  browserWindow.webContents.on('dom-ready', () => {
+    if (state.petOverlayLastPayload) {
+      sendPetOverlayUpdate(browserWindow, state.petOverlayLastPayload);
+    }
+  });
+
+  browserWindow.showInactive();
+  return browserWindow;
+};
+
+
 const setMiniChatPinned = (browserWindow, pinned) => {
   if (!browserWindow || browserWindow.isDestroyed()) {
     throw new Error('Window is not available');
@@ -3921,6 +4119,22 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       return null;
     }
 
+    case 'desktop_copy_directory': {
+      const rawSrc = typeof args.src === 'string' ? args.src.trim() : '';
+      const rawDest = typeof args.dest === 'string' ? args.dest.trim() : '';
+      if (!rawSrc || !rawDest) {
+        throw new Error('Source and destination paths are required');
+      }
+      const src = await validateLocalPath(rawSrc);
+      const dest = await validateLocalPath(rawDest);
+      const srcStats = await fsp.stat(src.path);
+      if (!srcStats.isDirectory()) {
+        throw new Error('Source path is not a directory');
+      }
+      await fsp.cp(src.path, dest.path, { recursive: true, force: false, errorOnExist: true });
+      return { success: true, path: dest.path };
+    }
+
     case 'desktop_reveal_path': {
       const validated = await validateLocalPath(typeof args.path === 'string' ? args.path.trim() : '');
       if (validated.stats.isDirectory()) {
@@ -4421,6 +4635,44 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
 
     case 'desktop_get_current_window_state':
       return { maximized: Boolean(browserWindow && !browserWindow.isDestroyed() && browserWindow.isMaximized()) };
+
+    case 'pet_overlay_show': {
+      const win = await createPetOverlayWindow();
+      if (state.petOverlayLastPayload) {
+        sendPetOverlayUpdate(win, state.petOverlayLastPayload);
+      }
+      return null;
+    }
+
+    case 'pet_overlay_hide': {
+      if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+        state.petOverlayWindow.hide();
+      }
+      return null;
+    }
+
+    case 'pet_overlay_update': {
+      const payload = sanitizePetOverlayPayload(args);
+      state.petOverlayLastPayload = payload;
+      if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+        sendPetOverlayUpdate(state.petOverlayWindow, payload);
+        resizePetOverlayWindow(state.petOverlayWindow, payload.petSize);
+      }
+      return null;
+    }
+
+    case 'pet_overlay_move': {
+      if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+        const dx = Math.round(Number(args.dx) || 0);
+        const dy = Math.round(Number(args.dy) || 0);
+        const [x, y] = state.petOverlayWindow.getPosition();
+        const bounds = state.petOverlayWindow.getBounds();
+        const next = clampPetOverlayPosition({ x: x + dx, y: y + dy }, bounds.width, bounds.height);
+        state.petOverlayWindow.setPosition(next.x, next.y);
+        debouncePetOverlayPositionPersist(state.petOverlayWindow);
+      }
+      return null;
+    }
 
     case 'desktop_show_app_menu': {
       if (!browserWindow || browserWindow.isDestroyed()) {
