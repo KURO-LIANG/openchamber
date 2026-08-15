@@ -10,7 +10,8 @@
 |---|---|
 | **Pet（宠物）** | 可展示的虚拟形象。拥有 `id`、名称、CDN 资产。共 8 只（数量与文件名需前置验证） |
 | **PetState（宠物状态）** | 四态：`running` / `needs-input` / `ready` / `blocked`，语义对齐 codex，文案本地化 |
-| **PetBubble（宠物气泡）** | 聊天区左下角浮动 UI 载体，点击循环切换宠物 |
+| **PetBubble（宠物气泡）** | 聊天区左下角浮动 UI 载体（Web/移动运行时）；桌面端由全局悬浮窗（PetOverlay）承载。长按可拖动，不可点击切换 |
+| **PetOverlayWindow（宠物悬浮窗）** | 桌面端（Electron）独立 always-on-top 透明窗口，渲染 `pet-overlay.html`；状态由主窗口经 IPC 单向推送，位置持久化到桌面设置 |
 | **PetAssetCache（资产缓存）** | CDN 资产按需下载后的本地缓存；Electron 落磁盘、Web/移动落 IndexedDB |
 | **showPet（设置）** | 全局布尔设置，走正式设置系统；默认值按运行时平台区分 |
 | **PetPreference（宠物偏好）** | 当前选中宠物 id，存 localStorage，不跨端同步 |
@@ -25,12 +26,12 @@
 | ADR-002 | 气泡文案本地化（运行中/等待输入/已完成/受阻），不逐字复刻英文 | Q8-B；项目 i18n 硬规范（`locale-ui-patterns`） |
 | ADR-003 | 桌面/Web 默认显示；Capacitor 与 hosted mobile 默认隐藏、设置可开启 | Q9-B；共享契约覆盖全部 5 运行时 |
 | ADR-004 | `/pets` 为 UI 操作型命令（切换开关）：`/pets` 显隐、`/pets <name>` 选宠；不产生消息、不经 LLM；无会话可用 | Q1-A；复用 `builtInCommands` + `handleSubmit` 斜杠分支（同 undo/redo/timeline 模式） |
-| ADR-005 | 默认单只宠物，点击循环切换；偏好持久化到 localStorage | Q2-A、Q4-A；渲染可控，多只/按状态换宠留作增强 |
+| ADR-005 | 默认单只宠物，~~点击循环切换~~（已作废，见 ADR-012）；换宠走设置页列表与 `/pets` 命令；偏好持久化到 localStorage | Q2-A、Q4-A；渲染可控，多只/按状态换宠留作增强 |
 | ADR-006 | 四态信号全部用真实数据：`busy`→运行中、`retry`→受阻、idle 且有 pending permission/question→等待输入、其余 idle→已完成 | Q5-A；`session.error` 归约 idle 的事实决定"受阻"用 retry 而非 error |
 | ADR-007 | 有消息的会话即显示，无会话/无消息隐藏 | Q6-A |
 | ADR-008 | 加载中显示静态占位帧；单只失败隐藏 + 一次性提示；全部失败显示离线气泡；下次会话重试；**失败不伪装成成功** | Q7-A；AGENTS.md 不变量 |
 | ADR-009 | `showPet` 进正式设置系统（跨端同步）；宠物偏好本地存储 | Q8-A；设置系统 5 处契约 + 服务端白名单 |
-| ADR-010 | 气泡挂聊天区左下角（`left-3 bottom-3`），z-index 低于 autocomplete(z-100)/抽屉(z-60) | Q3-A；实测左下角无既有浮层，与右上角 WorkStatusPanel 对角线不冲突 |
+| ADR-010 | 气泡挂聊天区左下角（`left-3 bottom-3`），z-index 低于 autocomplete(z-100)/抽屉(z-60)；桌面端由独立置顶悬浮窗承载（ADR-011），Web/移动保持应用内挂载 | Q3-A；实测左下角无既有浮层，与右上角 WorkStatusPanel 对角线不冲突 |
 
 ## 4. 状态映射规范
 
@@ -69,9 +70,10 @@
 
 ### 5.4 渲染
 
-- 挂载点：`ChatContainer.tsx` 的 `data-composer-bound` relative 容器（:1244）
-- 桌面：`absolute left-3 bottom-3 z-30`；移动端启用时挂 `.oc-mobile-app-shell` 层以避开键盘 mover（`.oc-mobile-composer` 会被 translateY 带走）
-- 交互：点击循环切换下一只（先本地缓存，再网络）
+- Web/移动挂载点：`ChatContainer.tsx` 的 `data-composer-bound` relative 容器（:1244）；桌面端（Electron）不渲染应用内气泡，由独立 always-on-top 透明悬浮窗（`pet-overlay.html`）承载
+- 桌面悬浮窗：主进程创建（transparent/frameless/`alwaysOnTop('screen-saver')`/skipTaskbar/focusable:false），与主窗口同 origin 共享 IndexedDB 资产缓存；状态与回复预览由主窗口 `PetOverlayBridge` 经 `pet_overlay_show|hide|update` IPC 单向推送，主进程重放最新载荷；窗口位置存 `settings.json#desktopPetOverlayPosition`
+- 交互：**不可点击切换宠物**；长按 400ms（位移 <8px）进入拖动 —— 桌面端经 `pet_overlay_move` 移动窗口并持久化，Web/移动以 transform 偏移并持久化到 localStorage
+- 动画：状态触发后持续保持（running/needs-input/blocked 主帧循环，`loopStart: 0`），直至状态变化；`ready` 为呼吸循环；气泡文案同样持续显示
 - 性能：仅渲染当前宠物；`document.hidden` 时暂停动画；宠物不拦截输入区事件
 
 ### 5.5 设置项（5 处契约 + 服务端）
@@ -103,7 +105,9 @@
 | `packages/ui/src/components/chat/CommandAutocomplete.tsx:141,337` | `builtInCommands` 加 `pets` + 图标 case |
 | `packages/ui/src/components/chat/ChatInput.tsx` | `handleSubmit` 斜杠分支：`pets`/`pets <name>` 显隐与选宠，不产生消息 |
 | `packages/ui/src/components/sections/openchamber/OpenChamberVisualSettings.tsx:281` + `OpenChamberPage.tsx` + `lib/settings/search.ts` | 设置 UI 与搜索索引 |
-| 新增 `packages/ui/src/components/chat/pets/` | `catalog.ts`（宠物目录）、`animations.ts`（帧网格与动画轨道）、`petAssetStore.ts`（下载/IndexedDB 缓存/状态机）、`usePetState.ts`（四态映射）、`petPreference.ts`（本地偏好）、`PetBubble.tsx`（canvas 动画气泡） |
+| 新增 `packages/ui/src/components/chat/pets/` | `catalog.ts`（宠物目录）、`animations.ts`（帧网格与动画轨道）、`petAssetStore.ts`（下载/IndexedDB 缓存/状态机）、`usePetState.ts`（四态映射）、`petPreference.ts`（本地偏好）、`PetBubble.tsx`（应用内 canvas 动画气泡）、`PetStatusBubble.tsx`（状态气泡，双端共享）、`usePetDrag.ts`（长按拖拽）、`usePetAssistantPreview.ts`（回复预览）、`PetOverlay.tsx`（悬浮窗渲染）、`PetOverlayBridge.tsx`（桌面状态桥接） |
+| 新增 `packages/web/pet-overlay.html` + `src/pet-overlay-main.tsx` | 悬浮窗页面与入口（vite 多入口 `petOverlay`） |
+| `packages/electron/main.mjs` | 悬浮窗窗口生命周期、`pet_overlay_show/hide/update/move` IPC、位置持久化与恢复、退出清理 |
 | `packages/ui/src/lib/i18n/messages/*`（11 语言） | `chat.pets.state.*`、`chat.commandAutocomplete.command.petsDescription`、`settings.openchamber.visual.field.showPet`(+Aria) |
 
 ## 7. 验证计划

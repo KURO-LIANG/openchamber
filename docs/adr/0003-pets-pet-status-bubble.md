@@ -22,3 +22,21 @@ OpenChamber 将复刻 codex CLI 的 `/pets` 宠物状态角标：会话运行期
 - 选哪只宠物属本地偏好（localStorage），不跨端同步——显隐是全局契约，审美偏好是本地事实。
 
 **Consequences**: 资产依赖第三方 CDN 可用性，离线时降级为离线气泡（功能可用性不依赖资产成功加载）；移动端用户默认不可见，需主动开启；设置项增加服务端白名单维护面（`sanitizeSettingsUpdate` 未加条目则保存被静默丢弃，以单测兜底）。
+
+## 桌面呈现：独立置顶透明悬浮窗（ADR-011）
+
+原设计将宠物渲染为聊天区内的 DOM 元素（ADR-010）。桌面端（Electron）改为**独立 always-on-top 透明悬浮窗**承载宠物，浮于系统所有程序之上：
+
+- Electron 主进程创建 `pet-overlay.html` 窗口（`transparent`、`frame:false`、`alwaysOnTop('screen-saver')`、`skipTaskbar`、`focusable:false`、`resizable:false`），与主窗口同 origin（`openchamber-ui://app`），共享 IndexedDB 资产缓存。
+- 权威状态在主窗口：`PetOverlayBridge` 订阅 `showPet`/`petSize`/宠物偏好/`usePetState`/回复预览，经 `pet_overlay_show|hide|update` IPC 推送；主进程持有最新载荷并在窗口（重新）创建时重放，overlay 永不过期渲染。
+- 位置持久化在 `~/.config/openchamber/settings.json` 的 `desktopPetOverlayPosition`，启动恢复并 clamp 到可见工作区。
+- 非桌面运行时（Web/VS Code/移动）保持应用内渲染（`PetBubble`），共享同一套交互与动画。
+- IPC 命令（`pet_overlay_*`）不进 `COMMANDS_SAFE_FOR_REMOTE`，仅本地页面可用。
+
+**Consequences**: Linux 透明窗依赖合成器（个别环境可能黑底，功能不受损）；overlay 与主窗口的状态契约是单向推送，任何一端重启后由载荷重放恢复；窗口层级提升带来跨应用遮挡管理（用户可拖动、可收起）。
+
+## 交互与状态语义（ADR-012）
+
+- **点击不再循环切换宠物**（ADR-005 作废）：换宠只在设置页列表与 `/pets` 命令完成；宠物本体不可点击。
+- **长按拖动**：按住宠物 400ms（位移 <8px）进入拖动；桌面端经 `pet_overlay_move` 移动窗口并持久化位置，应用内（Web/移动）以 transform 偏移并持久化到 localStorage。
+- **状态触发后持续保持**：running/needs-input/blocked 动画轨道循环播放主帧（`loopStart: 0`），不再播完退回 idle 呼吸；气泡文案同样持续显示，直至状态变化。`ready` 仍为呼吸循环。
