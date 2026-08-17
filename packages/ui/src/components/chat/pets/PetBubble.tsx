@@ -90,7 +90,7 @@ export function PetBubble() {
     );
     const loadSprite = React.useMemo(() => makeLoader(pet), [makeLoader, pet]);
     const assetStatus = usePetAsset(pet, loadSprite);
-    const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    const petRef = React.useRef<HTMLDivElement>(null);
 
     const displayHeight = Math.round(DISPLAY_HEIGHT * petSize);
     const displayWidth = Math.round(displayHeight * FRAME_WIDTH / FRAME_HEIGHT);
@@ -109,17 +109,12 @@ export function PetBubble() {
         onDragEnd: () => persistInlinePosition(offsetRef.current),
     });
 
-    // Load the image the canvas needs. Read through the same subscription that
-    // drives `assetStatus`, so a status change also refreshes the image.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const image = React.useMemo(() => (pet ? getPetAssetImage(pet.id) : null), [assetStatus, pet]);
 
     React.useEffect(() => {
-        if (!image) return;
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!image || !petRef.current) return;
+        const el = petRef.current;
 
         const track = animationForState(state);
         let raf = 0;
@@ -128,10 +123,9 @@ export function PetBubble() {
         const draw = (now: number) => {
             const frameIndex = frameIndexAtElapsed(track, now - start);
             const sprite = track.frames[frameIndex];
-            const sx = (sprite % SPRITESHEET_COLUMNS) * FRAME_WIDTH;
-            const sy = Math.floor(sprite / SPRITESHEET_COLUMNS) * FRAME_HEIGHT;
-            ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-            ctx.drawImage(image, sx, sy, FRAME_WIDTH, FRAME_HEIGHT, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+            const sx = (sprite % SPRITESHEET_COLUMNS) * displayWidth;
+            const sy = Math.floor(sprite / SPRITESHEET_COLUMNS) * displayHeight;
+            el.style.backgroundPosition = `-${sx}px -${sy}px`;
             raf = requestAnimationFrame(draw);
         };
 
@@ -149,11 +143,11 @@ export function PetBubble() {
             cancelAnimationFrame(raf);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [image, state]);
+    }, [image, state, displayHeight, displayWidth]);
 
     // On the desktop the pet is rendered by the always-on-top overlay window;
     // rendering here too would show a second copy inside the app.
-    if (isElectronShell() || !showPet) {
+    if (isElectronShell() || runtimeApis?.runtime?.platform === 'desktop' || !showPet) {
         return null;
     }
 
@@ -161,23 +155,29 @@ export function PetBubble() {
         <div
             {...drag.pointerProps}
             className={cn(
-                'absolute right-3 bottom-full mb-2.5 z-30 flex touch-none select-none flex-col items-end gap-1.5',
+                'absolute right-3 bottom-full mb-2.5 z-30 flex touch-none select-none flex-col items-end gap-1.5 bg-transparent outline-none',
                 drag.isDragging ? 'cursor-grabbing' : 'cursor-grab',
             )}
             style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
         >
             <PetStatusBubble state={state} preview={preview} petSize={petSize} />
             {assetStatus === 'ok' && image ? (
-                <canvas
-                    ref={canvasRef}
-                    width={FRAME_WIDTH}
-                    height={FRAME_HEIGHT}
-                    style={{ height: displayHeight, width: displayWidth }}
+                <div
+                    ref={petRef}
+                    className="outline-none"
+                    style={{
+                        height: displayHeight,
+                        width: displayWidth,
+                        backgroundImage: `url(${image.src})`,
+                        backgroundSize: `${SPRITESHEET_COLUMNS * displayWidth}px ${9 * displayHeight}px`,
+                        backgroundPosition: '0 0',
+                        backgroundRepeat: 'no-repeat',
+                    }}
                     aria-hidden="true"
                 />
             ) : (
                 <div
-                    className="flex items-center justify-center"
+                    className="flex items-center justify-center bg-transparent outline-none"
                     style={{ height: displayHeight, width: displayWidth }}
                 >
                     <span className="text-xs text-muted-foreground">

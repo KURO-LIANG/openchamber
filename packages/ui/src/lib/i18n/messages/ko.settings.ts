@@ -101,6 +101,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': '작업 중 함께할 반려동물을 선택하세요.',
   'settings.page.pets.section.customPets': '커스텀 반려동물',
   'settings.page.pets.action.openFolder': '반려동물 폴터 열기',
+  'settings.page.pets.action.openFolderFailed': '반려동물 폴더를 열지 못했습니다',
   'settings.page.pets.section.appearance': '외형',
   'settings.page.pets.field.petSize': '반려동물 크기',
   'settings.page.pets.field.petSizeDescription': '반려동물을 작게 또는 크게 만드세요.',

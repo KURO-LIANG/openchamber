@@ -2846,13 +2846,26 @@ const createMiniChatWindow = async ({ mode, sessionId = '', directory = '', proj
 //
 // The UI keeps the same bubble-space constant in PetOverlay.tsx
 // (PET_OVERLAY_BUBBLE_SPACE_HEIGHT); keep the two in sync.
+//
+// Bubble space must fit the tallest possible bubble: 3 preview lines at the
+// clamped 1rem body font with leading-relaxed (3 * 16 * 1.625 = 78px), plus
+// px-3/py-1.5 padding (24px), borders (2px), and the gap to the sprite (6px),
+// with a small margin.
 // ---------------------------------------------------------------------------
 
-const PET_OVERLAY_BUBBLE_SPACE_HEIGHT = 96;
+const PET_OVERLAY_BUBBLE_SPACE_HEIGHT = 112;
 const PET_OVERLAY_BASE_DISPLAY_HEIGHT = 96;
-const PET_OVERLAY_BUBBLE_MAX_WIDTH = 320;
 const PET_OVERLAY_DEFAULT_POSITION = { x: 24, y: 24 };
 const PET_OVERLAY_STATES = new Set(['running', 'needs-input', 'ready', 'blocked']);
+
+const petOverlayWidth = (petSize) => {
+  const size = Number.isFinite(Number(petSize)) ? Math.max(0.5, Math.min(1.5, Number(petSize))) : 1;
+  const petWidth = Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * size * 192 / 208);
+  // Match PetStatusBubble's max-width (16rem * size) plus px-3 padding and borders.
+  const bubbleMaxContentRem = Math.round(16 * size);
+  const bubbleTotalWidth = bubbleMaxContentRem * 16 + 26;
+  return Math.max(bubbleTotalWidth, petWidth);
+};
 
 const buildPetOverlayUrl = () => {
   const base = shouldUsePackagedUi()
@@ -2923,7 +2936,7 @@ const resizePetOverlayWindow = (browserWindow, petSize) => {
   if (!browserWindow || browserWindow.isDestroyed()) return;
   const size = Number.isFinite(Number(petSize)) ? Math.max(0.5, Math.min(1.5, Number(petSize))) : 1;
   const height = Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * size) + PET_OVERLAY_BUBBLE_SPACE_HEIGHT;
-  const width = Math.max(PET_OVERLAY_BUBBLE_MAX_WIDTH, Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * size * 192 / 208) + 24);
+  const width = petOverlayWidth(size);
   browserWindow.setSize(width, height);
 };
 
@@ -2944,7 +2957,7 @@ const createPetOverlayWindow = async () => {
     ? state.petOverlayLastPayload.petSize
     : 1;
   const height = Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * petSize) + PET_OVERLAY_BUBBLE_SPACE_HEIGHT;
-  const width = Math.max(PET_OVERLAY_BUBBLE_MAX_WIDTH, Math.round(PET_OVERLAY_BASE_DISPLAY_HEIGHT * petSize * 192 / 208) + 24);
+  const width = petOverlayWidth(petSize);
   const position = readPetOverlayPosition(width, height);
 
   const desktopLocalOrigin = state.localOrigin || '';
@@ -2984,10 +2997,17 @@ const createPetOverlayWindow = async () => {
   browserWindow.__ocPetOverlay = true;
   state.petOverlayWindow = browserWindow;
 
-  // Highest practical level: above fullscreen apps and other windows.
-  browserWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Forward mouse events through transparent areas so the window below
+  // stays clickable. Forward mouse-move messages to Chromium so the
+  // renderer can detect mouse enter/leave on the pet area.
+  browserWindow.setIgnoreMouseEvents(true, { forward: true });
+
+  // Keep the pet above regular windows without the macOS all-Spaces/fullscreen
+  // aux behavior that can steal focus when switching desktops (screen-saver
+  // level + FullScreenAuxiliary triggers app activation via app.on('activate')).
+  browserWindow.setAlwaysOnTop(true, 'floating');
   if (process.platform === 'darwin') {
-    browserWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    browserWindow.setVisibleOnAllWorkspaces(true);
   }
 
   browserWindow.on('closed', () => {
@@ -4638,6 +4658,9 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
 
     case 'pet_overlay_show': {
       const win = await createPetOverlayWindow();
+      if (win && !win.isDestroyed() && !win.isVisible()) {
+        win.showInactive();
+      }
       if (state.petOverlayLastPayload) {
         sendPetOverlayUpdate(win, state.petOverlayLastPayload);
       }
@@ -4661,15 +4684,28 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       return null;
     }
 
-    case 'pet_overlay_move': {
+    case 'pet_overlay_move_to': {
       if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
-        const dx = Math.round(Number(args.dx) || 0);
-        const dy = Math.round(Number(args.dy) || 0);
-        const [x, y] = state.petOverlayWindow.getPosition();
+        const x = Math.round(Number(args.x) || 0);
+        const y = Math.round(Number(args.y) || 0);
         const bounds = state.petOverlayWindow.getBounds();
-        const next = clampPetOverlayPosition({ x: x + dx, y: y + dy }, bounds.width, bounds.height);
+        const next = clampPetOverlayPosition({ x, y }, bounds.width, bounds.height);
         state.petOverlayWindow.setPosition(next.x, next.y);
         debouncePetOverlayPositionPersist(state.petOverlayWindow);
+      }
+      return null;
+    }
+
+    case 'pet_overlay_set_interactive': {
+      if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+        state.petOverlayWindow.setIgnoreMouseEvents(false);
+      }
+      return null;
+    }
+
+    case 'pet_overlay_set_noninteractive': {
+      if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
+        state.petOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
       }
       return null;
     }
@@ -5403,6 +5439,15 @@ app.whenReady().then(async () => {
     isBackgroundStart,
     loginItemSettings,
   });
+
+  // Launch Services can misclassify this bundle id as a background agent
+  // (UIElement) after repeated installs of the same bundle, which hides the
+  // Dock running indicator and the Dock quit menu. Force a regular foreground
+  // activation policy so the Dock treats the app as a normal app.
+  if (process.platform === 'darwin') {
+    app.setActivationPolicy('regular');
+  }
+
   nativeTheme.themeSource = readThemeSource();
   registerPackagedUiProtocol();
   setupAutoUpdater();

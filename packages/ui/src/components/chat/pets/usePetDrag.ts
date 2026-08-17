@@ -13,7 +13,10 @@ import React from 'react';
 
 export interface UsePetDragOptions {
     onDragStart?: () => void;
+    /** Relative pointer deltas (used by the in-app pet). */
     onDragMove?: (dx: number, dy: number) => void;
+    /** Absolute screen coordinates for the window top-left (used by the desktop overlay). */
+    onDragMoveTo?: (x: number, y: number) => void;
     onDragEnd?: () => void;
     longPressMs?: number;
     moveTolerancePx?: number;
@@ -42,14 +45,15 @@ interface DragState {
 export function usePetDrag({
     onDragStart,
     onDragMove,
+    onDragMoveTo,
     onDragEnd,
     longPressMs = 400,
     moveTolerancePx = 8,
 }: UsePetDragOptions): UsePetDragResult {
     const stateRef = React.useRef<DragState | null>(null);
     const [isDragging, setIsDragging] = React.useState(false);
-    const callbacksRef = React.useRef({ onDragStart, onDragMove, onDragEnd });
-    callbacksRef.current = { onDragStart, onDragMove, onDragEnd };
+    const callbacksRef = React.useRef({ onDragStart, onDragMove, onDragMoveTo, onDragEnd });
+    callbacksRef.current = { onDragStart, onDragMove, onDragMoveTo, onDragEnd };
 
     const clearTimer = (state: DragState) => {
         if (state.timer !== null) {
@@ -84,12 +88,18 @@ export function usePetDrag({
             };
             stateRef.current = state;
             event.currentTarget.setPointerCapture(event.pointerId);
-            state.timer = setTimeout(() => {
-                state.timer = null;
+            if (longPressMs === 0) {
                 state.dragging = true;
                 setIsDragging(true);
                 callbacksRef.current.onDragStart?.();
-            }, longPressMs);
+            } else {
+                state.timer = setTimeout(() => {
+                    state.timer = null;
+                    state.dragging = true;
+                    setIsDragging(true);
+                    callbacksRef.current.onDragStart?.();
+                }, longPressMs);
+            }
         },
         [longPressMs],
     );
@@ -115,6 +125,12 @@ export function usePetDrag({
 
             if (deltaX !== 0 || deltaY !== 0) {
                 callbacksRef.current.onDragMove?.(deltaX, deltaY);
+            }
+            if (callbacksRef.current.onDragMoveTo) {
+                callbacksRef.current.onDragMoveTo(
+                    event.screenX - state.startX,
+                    event.screenY - state.startY,
+                );
             }
         },
         [moveTolerancePx],

@@ -1320,6 +1320,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': 'Wybierz towarzysza, który będzie Ci towarzyszył podczas pracy.',
   'settings.page.pets.section.customPets': 'Własne zwierzątka',
   'settings.page.pets.action.openFolder': 'Otwórz folder zwierzątek',
+  'settings.page.pets.action.openFolderFailed': 'Nie udało się otworzyć folderu zwierzątek',
   'settings.page.pets.section.appearance': 'Wygląd',
   'settings.page.pets.field.petSize': 'Rozmiar zwierzątka',
   'settings.page.pets.field.petSizeDescription': 'Zmniejsz lub powiększ swoje zwierzątko.',

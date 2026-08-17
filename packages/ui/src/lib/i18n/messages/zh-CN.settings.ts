@@ -101,6 +101,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': '选择一个在工作时陪伴你的伙伴。',
   'settings.page.pets.section.customPets': '自定义宠物',
   'settings.page.pets.action.openFolder': '打开宠物文件夹',
+  'settings.page.pets.action.openFolderFailed': '打开宠物文件夹失败',
   'settings.page.pets.section.appearance': '外观',
   'settings.page.pets.field.petSize': '宠物大小',
   'settings.page.pets.field.petSizeDescription': '让你的宠物变小或变大。',

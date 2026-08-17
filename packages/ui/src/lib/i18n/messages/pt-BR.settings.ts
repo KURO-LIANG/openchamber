@@ -101,6 +101,7 @@ export const settingsDict = {
   "settings.page.pets.choosePetDescription": "Escolha um companheiro para ficar com você enquanto trabalha.",
   "settings.page.pets.section.customPets": "Pets personalizados",
   "settings.page.pets.action.openFolder": "Abrir pasta de pets",
+  "settings.page.pets.action.openFolderFailed": "Falha ao abrir a pasta de pets",
   "settings.page.pets.section.appearance": "Aparência",
   "settings.page.pets.field.petSize": "Tamanho do pet",
   "settings.page.pets.field.petSizeDescription": "Deixe seu pet menor ou maior.",

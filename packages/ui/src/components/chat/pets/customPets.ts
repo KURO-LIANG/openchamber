@@ -21,7 +21,7 @@ export interface CustomPetCatalogEntry extends PetCatalogEntry {
 const CUSTOM_PET_PREFIX = 'custom:';
 
 export function getCustomPetsDirectory(homeDirectory: string): string {
-    return `${homeDirectory}/.openchamber/pets`;
+    return `${homeDirectory}/.opencode/pets`;
 }
 
 function makeCustomPetId(folderName: string): string {

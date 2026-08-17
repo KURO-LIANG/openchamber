@@ -101,6 +101,7 @@ export const settingsDict = {
   "settings.page.pets.choosePetDescription": "Оберіть супутника, який складатиме вам компанію під час роботи.",
   "settings.page.pets.section.customPets": "Власні улюбленці",
   "settings.page.pets.action.openFolder": "Відкрити папку улюбленців",
+  "settings.page.pets.action.openFolderFailed": "Не вдалося відкрити папку улюбленців",
   "settings.page.pets.section.appearance": "Зовнішній вигляд",
   "settings.page.pets.field.petSize": "Розмір улюбленця",
   "settings.page.pets.field.petSizeDescription": "Зробіть улюбленця меншим або більшим.",

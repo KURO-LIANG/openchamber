@@ -93,6 +93,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': 'Choisissez un compagnon pour vous tenir compagnie au travail.',
   'settings.page.pets.section.customPets': 'Animaux personnalisés',
   'settings.page.pets.action.openFolder': 'Ouvrir le dossier des animaux',
+  'settings.page.pets.action.openFolderFailed': "Impossible d'ouvrir le dossier des animaux",
   'settings.page.pets.section.appearance': 'Apparence',
   'settings.page.pets.field.petSize': 'Taille de l’animal',
   'settings.page.pets.field.petSizeDescription': 'Rendez votre animal plus petit ou plus grand.',

@@ -71,10 +71,16 @@
 ### 5.4 渲染
 
 - Web/移动挂载点：`ChatContainer.tsx` 的 `data-composer-bound` relative 容器（:1244）；桌面端（Electron）不渲染应用内气泡，由独立 always-on-top 透明悬浮窗（`pet-overlay.html`）承载
-- 桌面悬浮窗：主进程创建（transparent/frameless/`alwaysOnTop('screen-saver')`/skipTaskbar/focusable:false），与主窗口同 origin 共享 IndexedDB 资产缓存；状态与回复预览由主窗口 `PetOverlayBridge` 经 `pet_overlay_show|hide|update` IPC 单向推送，主进程重放最新载荷；窗口位置存 `settings.json#desktopPetOverlayPosition`
-- 交互：**不可点击切换宠物**；长按 400ms（位移 <8px）进入拖动 —— 桌面端经 `pet_overlay_move` 移动窗口并持久化，Web/移动以 transform 偏移并持久化到 localStorage
-- 动画：状态触发后持续保持（running/needs-input/blocked 主帧循环，`loopStart: 0`），直至状态变化；`ready` 为呼吸循环；气泡文案同样持续显示
-- 性能：仅渲染当前宠物；`document.hidden` 时暂停动画；宠物不拦截输入区事件
+- 桌面悬浮窗：主进程创建（transparent/frameless/`alwaysOnTop('floating')`/skipTaskbar/focusable:false/`hasShadow:false`），与主窗口同 origin 共享 IndexedDB 资产缓存；状态与回复预览由主窗口 `PetOverlayBridge` 经 `pet_overlay_show|hide|update` IPC 单向推送，主进程重放最新载荷；窗口位置存 `settings.json#desktopPetOverlayPosition`
+- 渲染：不使用 `<canvas>`，宠物用 `<div>` + `background-image`（blob/data URL 雪碧图）+ rAF 更新 `background-position` 播放帧动画，彻底消除画布背景；`background-size` 必须按网格缩放到 div 尺寸（`SPRITESHEET_COLUMNS * displayWidth` × `9 * displayHeight`），动画位移用缩放后的网格坐标（`(sprite % 8) * displayWidth` / `floor(sprite / 8) * displayHeight`）——若直接使用雪碧图原始尺寸（1536×1872）与原始帧坐标，div 窗口只会显示每帧约 1/4 的切片，宠物呈现为被裁剪的局部放大图（canvas 版 drawImage 裁剪完整帧后缩放，不会出现此问题）
+- 悬浮窗透明：窗口 `transparent: true` + `pet-overlay.html` 内联 `html, body, #root { background: transparent !important }` + `src/pet-overlay.css`（在共享 `@openchamber/ui/index.css` 之后加载，`!important` 强制透明）——共享样式的 `body { background-color: var(--background) }` 在构建产物中位于内联样式之后，若不在 `@layer` 内会胜出，浅色主题下会画出白色背景块；悬浮窗页面不得引入任何会为 `body`/`#root` 上色的规则
+- 悬浮窗气泡：`PetStatusBubble` 增加 `translucent` 选项，悬浮窗（`PetOverlay`）传入后用 `color-mix(in srgb, var(--popover) 55%, transparent)` 半透明表面替代纯 `--popover` 背景——浅色主题下 `--popover` 为纯白，实心气泡会在透明悬浮窗上呈现为紧贴宠物的白色矩形；应用内气泡（`PetBubble`）保持实心 popover 表面不变
+- 窗口尺寸：按宠物实际宽度与气泡最大宽度（`16rem * petSize` + padding/border）计算宽度；高度 = 宠物高度 + 气泡区预留 `PET_OVERLAY_BUBBLE_SPACE_HEIGHT`（112px，main.mjs 与 PetOverlay.tsx 两处常量保持一致），预留值按 3 行预览的最大气泡高度计算，防止气泡把宠物顶出窗口顶部；默认 `setIgnoreMouseEvents(true, { forward: true })`，鼠标进入宠物/气泡区域才切 interactive
+- 交互：**不可点击切换宠物**；桌面端按下即拖动（`longPressMs: 0`），以绝对屏幕坐标 `pet_overlay_move_to` 移动窗口并持久化；Web/移动仍长按 400ms 后以 transform 偏移并持久化到 localStorage
+- 动画：状态触发后持续保持（running/needs-input/blocked 主帧循环，`loopStart: 0`），直至状态变化；`ready` 为呼吸循环；空闲时鼠标悬停宠物播放 hover 反应动画（帧 33-36 连续跳跃 3 遍后回 idle；雪碧图帧 37-39 为空白帧，不入轨道，`loopStart: null` 使一次性停止逻辑生效，每次移入重新触发）；拖拽时播放 `running` 奔跑动画；气泡文案同样持续显示
+- 气泡：`ready` 态只显示回复预览气泡（不显示"已完成"状态文字）；其他状态仍显示状态文字
+- Dock：`app.whenReady()` 内 `setActivationPolicy('regular')`，防止 Launch Services 将应用误分类为 UIElement 导致 Dock 无运行点/无退出菜单
+- 性能：仅渲染当前宠物；`document.hidden` 时暂停动画；拖拽移动经 `requestAnimationFrame` 合并，减少 IPC；宠物外层明确 `bg-transparent outline-none`
 
 ### 5.5 设置项（5 处契约 + 服务端）
 
@@ -105,9 +111,9 @@
 | `packages/ui/src/components/chat/CommandAutocomplete.tsx:141,337` | `builtInCommands` 加 `pets` + 图标 case |
 | `packages/ui/src/components/chat/ChatInput.tsx` | `handleSubmit` 斜杠分支：`pets`/`pets <name>` 显隐与选宠，不产生消息 |
 | `packages/ui/src/components/sections/openchamber/OpenChamberVisualSettings.tsx:281` + `OpenChamberPage.tsx` + `lib/settings/search.ts` | 设置 UI 与搜索索引 |
-| 新增 `packages/ui/src/components/chat/pets/` | `catalog.ts`（宠物目录）、`animations.ts`（帧网格与动画轨道）、`petAssetStore.ts`（下载/IndexedDB 缓存/状态机）、`usePetState.ts`（四态映射）、`petPreference.ts`（本地偏好）、`PetBubble.tsx`（应用内 canvas 动画气泡）、`PetStatusBubble.tsx`（状态气泡，双端共享）、`usePetDrag.ts`（长按拖拽）、`usePetAssistantPreview.ts`（回复预览）、`PetOverlay.tsx`（悬浮窗渲染）、`PetOverlayBridge.tsx`（桌面状态桥接） |
+| 新增 `packages/ui/src/components/chat/pets/` | `catalog.ts`（宠物目录）、`animations.ts`（帧网格与动画轨道；含 `PetAnimationState`、`hover` 开心轨与 `trackDuration`）、`petAssetStore.ts`（下载/IndexedDB 缓存/状态机）、`usePetState.ts`（四态映射）、`petPreference.ts`（本地偏好）、`PetBubble.tsx`（应用内 div 雪碧动画气泡；桌面平台守卫防重复渲染）、`PetStatusBubble.tsx`（状态气泡，双端共享，popover token 背景，ready 只显示预览）、`usePetDrag.ts`（长按拖拽；桌面用 `onDragMoveTo` 绝对坐标）、`usePetAssistantPreview.ts`（回复预览）、`PetOverlay.tsx`（悬浮窗 div 渲染；hover/drag 动画切换、透明无框）、`PetOverlayBridge.tsx`（桌面状态桥接） |
 | 新增 `packages/web/pet-overlay.html` + `src/pet-overlay-main.tsx` | 悬浮窗页面与入口（vite 多入口 `petOverlay`） |
-| `packages/electron/main.mjs` | 悬浮窗窗口生命周期、`pet_overlay_show/hide/update/move` IPC、位置持久化与恢复、退出清理 |
+| `packages/electron/main.mjs` | 悬浮窗窗口生命周期、`pet_overlay_show/hide/update/move_to` IPC、按气泡/宠物宽度动态计算窗口尺寸、位置持久化与恢复、退出清理 |
 | `packages/ui/src/lib/i18n/messages/*`（11 语言） | `chat.pets.state.*`、`chat.commandAutocomplete.command.petsDescription`、`settings.openchamber.visual.field.showPet`(+Aria) |
 
 ## 7. 验证计划

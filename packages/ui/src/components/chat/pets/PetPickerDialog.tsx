@@ -12,7 +12,7 @@ import { Icon } from '@/components/icon/Icon';
 import { useI18n, type I18nKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
-import { FRAME_HEIGHT, FRAME_WIDTH } from './animations';
+import { FRAME_HEIGHT, FRAME_WIDTH, SPRITESHEET_COLUMNS } from './animations';
 import { BUILTIN_PETS, builtinPet } from './catalog';
 import { ensurePetAsset, getPetAssetImage, getPetAssetStatus, subscribePetAssets, type PetAssetStatus } from './petAssetStore';
 import { changePetPreference, usePetPreference } from './petPreference';
@@ -57,7 +57,6 @@ export const PetPickerDialog: React.FC<PetPickerDialogProps> = ({ open, onClose 
     const [assetStatus, setAssetStatus] = React.useState<PetAssetStatus>(() =>
         previewPet ? getPetAssetStatus(previewPet.id) : 'idle',
     );
-    const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
     React.useEffect(() => {
         setAssetStatus(previewPet ? getPetAssetStatus(previewPet.id) : 'idle');
@@ -68,18 +67,6 @@ export const PetPickerDialog: React.FC<PetPickerDialogProps> = ({ open, onClose 
         void ensurePetAsset(previewPet, true);
         return unsubscribe;
     }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Static idle frame (sprite index 0) once the spritesheet is ready.
-    React.useEffect(() => {
-        if (!previewPet || assetStatus !== 'ok') return;
-        const canvas = canvasRef.current;
-        const image = getPetAssetImage(previewPet.id);
-        if (!canvas || !image) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-        ctx.drawImage(image, 0, 0, FRAME_WIDTH, FRAME_HEIGHT, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-    }, [previewPet, assetStatus]);
 
     const handleApply = () => {
         if (selected === DISABLED_PET_ENTRY) {
@@ -152,11 +139,16 @@ export const PetPickerDialog: React.FC<PetPickerDialogProps> = ({ open, onClose 
                                 </p>
                             </>
                         ) : assetStatus === 'ok' ? (
-                            <canvas
-                                ref={canvasRef}
-                                width={FRAME_WIDTH}
-                                height={FRAME_HEIGHT}
-                                style={{ height: previewHeight, width: previewWidth }}
+                            <div
+                                className="shrink-0"
+                                style={{
+                                    height: previewHeight,
+                                    width: previewWidth,
+                                    backgroundImage: `url(${previewPet ? (getPetAssetImage(previewPet.id)?.src ?? '') : ''})`,
+                                    backgroundSize: `${SPRITESHEET_COLUMNS * previewWidth}px ${9 * previewHeight}px`,
+                                    backgroundPosition: '0 0',
+                                    backgroundRepeat: 'no-repeat',
+                                }}
                                 aria-hidden="true"
                             />
                         ) : assetStatus === 'failed' ? (

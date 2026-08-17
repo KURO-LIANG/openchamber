@@ -100,6 +100,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': 'Pick a companion to keep you company while you work.',
   'settings.page.pets.section.customPets': 'Custom Pets',
   'settings.page.pets.action.openFolder': 'Open Pets Folder',
+  'settings.page.pets.action.openFolderFailed': 'Failed to open the pets folder',
   'settings.page.pets.section.appearance': 'Appearance',
   'settings.page.pets.field.petSize': 'Pet size',
   'settings.page.pets.field.petSizeDescription': 'Make your pet smaller or larger.',

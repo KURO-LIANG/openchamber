@@ -85,6 +85,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': 'Wähle einen Begleiter, der dich bei der Arbeit begleitet.',
   'settings.page.pets.section.customPets': 'Eigene Haustiere',
   'settings.page.pets.action.openFolder': 'Haustier-Ordner öffnen',
+  'settings.page.pets.action.openFolderFailed': 'Fehler beim Öffnen des Haustier-Ordners',
   'settings.page.pets.section.appearance': 'Darstellung',
   'settings.page.pets.field.petSize': 'Haustiergröße',
   'settings.page.pets.field.petSizeDescription': 'Mache dein Haustier kleiner oder größer.',

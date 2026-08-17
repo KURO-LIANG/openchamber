@@ -98,6 +98,7 @@
   'settings.page.pets.choosePetDescription': '選擇一個在工作時陪伴你的夥伴。',
   'settings.page.pets.section.customPets': '自定義寵物',
   'settings.page.pets.action.openFolder': '打開寵物資料夾',
+  'settings.page.pets.action.openFolderFailed': '開啟寵物資料夾失敗',
   'settings.page.pets.section.appearance': '外觀',
   'settings.page.pets.field.petSize': '寵物大小',
   'settings.page.pets.field.petSizeDescription': '讓你的寵物變小或變大。',

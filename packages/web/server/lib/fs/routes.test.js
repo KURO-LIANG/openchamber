@@ -115,7 +115,8 @@ const registerExec = ({ spawn }) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('POST', '/api/fs/exec');
 };
@@ -135,7 +136,8 @@ const registerWrite = (fsPromises) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('POST', '/api/fs/write');
 };
@@ -155,7 +157,8 @@ const registerRead = (fsPromises) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('GET', '/api/fs/read');
 };
@@ -175,7 +178,8 @@ const registerRaw = (fsPromises) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('GET', '/api/fs/raw');
 };
@@ -195,7 +199,8 @@ const registerMkdir = (fsPromises) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('POST', '/api/fs/mkdir');
 };
@@ -216,7 +221,8 @@ const registerReveal = ({ fsPromises, spawn, platform = 'linux' }) => {
     resolveProjectDirectory: async () => ({ directory: '/repo' }),
     buildAugmentedPath: () => '/usr/bin',
     resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
   });
   return getRoute('POST', '/api/fs/reveal');
 };
@@ -750,7 +756,8 @@ describe('fs list symlink path space (issue 2627)', () => {
       resolveProjectDirectory: async () => ({ directory: '/workspace' }),
       buildAugmentedPath: () => '/usr/bin',
       resolveGitBinaryForSpawn: () => 'git',
-      openchamberUserConfigRoot: '/home/user/.config',
+openchamberUserConfigRoot: '/home/user/.config',
+opencodeHomeDir: '/home/user/.opencode',
     });
     return getRoute('GET', '/api/fs/list');
   };

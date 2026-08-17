@@ -205,6 +205,12 @@ async function acquire(
                 }
             }
             if (!image) {
+                if ('isCustom' in pet && !loadSprite) {
+                    // Custom pets have no CDN counterpart; a missing loader is
+                    // a hard failure, never a fallback download.
+                    setStatus(pet, 'failed', null);
+                    return { status: 'failed', image: null };
+                }
                 image = loadSprite ? await loadSprite() : await download(pet);
             }
             setStatus(pet, image ? 'ok' : 'failed', image);

@@ -27,7 +27,10 @@ export interface PetAnimationTrack {
 
 export type PetDisplayState = 'running' | 'needs-input' | 'ready' | 'blocked';
 
-type PetAnimationName = 'idle' | 'running' | 'waiting' | 'failed';
+/** Animation state may include transient interaction overrides (e.g. hover). */
+export type PetAnimationState = PetDisplayState | 'hover';
+
+type PetAnimationName = 'idle' | 'running' | 'waiting' | 'failed' | 'hover';
 
 /** Row 0: the calm breathing loop used whenever nothing is happening. */
 const IDLE: PetAnimationTrack = {
@@ -67,6 +70,20 @@ const appStateTrack = (row: number, frameCount: number, frameMs: number, finalMs
     };
 };
 
+/**
+ * Row 4: happy/excited reaction shown while hovering the pet in idle state.
+ * Frames 33-36 are the visible jump cycle (stand -> rise -> fall -> crouch);
+ * frames 37-39 are blank in every spritesheet and must never enter the track,
+ * or the pet would vanish between jumps. The track plays the jump three times
+ * in a row and then stops (`loopStart: null`), letting PetOverlay's existing
+ * one-shot logic return the pet to idle.
+ */
+const HOVER: PetAnimationTrack = {
+    frames: [33, 34, 35, 36, 33, 34, 35, 36, 33, 34, 35, 36],
+    durations: [140, 140, 180, 180, 140, 140, 180, 180, 140, 140, 180, 180],
+    loopStart: null,
+};
+
 const PET_ANIMATIONS: Record<PetAnimationName, PetAnimationTrack> = {
     idle: IDLE,
     /** Row 7: busy running. */
@@ -75,6 +92,8 @@ const PET_ANIMATIONS: Record<PetAnimationName, PetAnimationTrack> = {
     waiting: appStateTrack(6, 6, 150, 260),
     /** Row 5: blocked/failed. */
     failed: appStateTrack(5, 8, 140, 240),
+    /** Row 4: happy/excited hover reaction. */
+    hover: HOVER,
 };
 
 /**
@@ -83,7 +102,7 @@ const PET_ANIMATIONS: Record<PetAnimationName, PetAnimationTrack> = {
  * Ready (idle) uses the calm breathing loop, exactly like Codex when no
  * notification is active.
  */
-export function animationForState(state: PetDisplayState): PetAnimationTrack {
+export function animationForState(state: PetAnimationState): PetAnimationTrack {
     switch (state) {
         case 'running':
             return PET_ANIMATIONS.running;
@@ -91,13 +110,15 @@ export function animationForState(state: PetDisplayState): PetAnimationTrack {
             return PET_ANIMATIONS.waiting;
         case 'blocked':
             return PET_ANIMATIONS.failed;
+        case 'hover':
+            return PET_ANIMATIONS.hover;
         case 'ready':
             return PET_ANIMATIONS.idle;
     }
 }
 
 /** Total duration of a track in milliseconds. */
-function trackDuration(track: PetAnimationTrack): number {
+export function trackDuration(track: PetAnimationTrack): number {
     return track.durations.reduce((sum, duration) => sum + duration, 0);
 }
 

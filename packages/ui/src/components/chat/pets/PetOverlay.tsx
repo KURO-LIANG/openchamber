@@ -3,12 +3,14 @@
  * (`pet-overlay.html`). It receives its display inputs — pet id, status
  * state, size, and the assistant-reply preview — from the main window via the
  * `pet-overlay-update` native event, because the authoritative state lives in
- * the main app's stores. Long-pressing drags the window by reporting pointer
- * deltas to the main process (`pet_overlay_move`), which moves and persists
- * the window position.
+ * the main app's stores. Pressing drags the window by reporting absolute
+ * screen coordinates to the main process (`pet_overlay_move_to`), which moves
+ * and persists the window position.
  *
  * The window is transparent and frameless, so this component owns the whole
- * page: the bubble column above the sprite, nothing else.
+ * page: the bubble column above the sprite, nothing else. Hovering the pet in
+ * an idle session plays a happy reaction animation; dragging plays the running
+ * animation.
  */
 
 import React from 'react';
@@ -22,12 +24,13 @@ import {
     SPRITESHEET_COLUMNS,
     animationForState,
     frameIndexAtElapsed,
+    trackDuration,
+    type PetAnimationState,
     type PetDisplayState,
 } from './animations';
 import { DEFAULT_PET_ID } from './catalog';
 import { getPetAssetImage, usePetAsset } from './petAssetStore';
 import {
-    getCustomPetsDirectory,
     loadCustomPetSprite,
     resolvePet,
     scanCustomPets,
@@ -42,9 +45,11 @@ const DISPLAY_HEIGHT = 96;
 /**
  * Vertical space reserved above the sprite for the status bubble column.
  * The main process sizes the overlay window with this same constant (see
- * main.mjs) so the bubble never gets clipped.
+ * main.mjs) so the bubble never gets clipped. Fits the tallest bubble:
+ * 3 preview lines at the clamped 1rem body font (3 * 16 * 1.625 = 78px)
+ * plus py-1.5 padding (24px), borders (2px), and the gap to the sprite (6px).
  */
-export const PET_OVERLAY_BUBBLE_SPACE_HEIGHT = 96;
+export const PET_OVERLAY_BUBBLE_SPACE_HEIGHT = 112;
 
 const VALID_STATES: readonly PetDisplayState[] = ['running', 'needs-input', 'ready', 'blocked'];
 
@@ -84,7 +89,9 @@ export function PetOverlay() {
         preview: null,
     }));
     const [customPets, setCustomPets] = React.useState<CustomPetCatalogEntry[]>([]);
-    const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [hoverPlayedOnce, setHoverPlayedOnce] = React.useState(false);
+    const petRef = React.useRef<HTMLDivElement>(null);
 
     // The main window pushes the authoritative display state over the native
     // bridge; the initial snapshot is replayed by the main process when the
@@ -142,24 +149,163 @@ export function PetOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const image = React.useMemo(() => (pet ? getPetAssetImage(pet.id) : null), [assetStatus, pet]);
 
-    React.useEffect(() => {
-        if (!image) return;
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+    // The overlay window is created with setIgnoreMouseEvents(true) so
+    // transparent areas are click-through. Only the content wrapper (bubble
+    // + sprite) is interactive: while the mouse is over it we disable
+    // click-through so pointer events (drag) work, and restore it once the
+    // mouse leaves. During an active drag we stay interactive even if the
+    // pointer leaves the content wrapper.
+    const interactiveRef = React.useRef<HTMLDivElement>(null);
+    const interactiveStateRef = React.useRef(false);
+    const isDraggingRef = React.useRef(false);
 
-        const track = animationForState(display.state);
+    const setInteractive = React.useCallback((next: boolean) => {
+        if (interactiveStateRef.current === next) return;
+        interactiveStateRef.current = next;
+        void invokeDesktop(next ? 'pet_overlay_set_interactive' : 'pet_overlay_set_noninteractive');
+    }, []);
+
+    const handleMouseEnter = React.useCallback(() => {
+        setInteractive(true);
+        setIsHovered(true);
+        setHoverPlayedOnce(false);
+    }, [setInteractive]);
+
+    const handleMouseLeave = React.useCallback(() => {
+        if (!isDraggingRef.current) {
+            setIsHovered(false);
+            setHoverPlayedOnce(false);
+            setInteractive(false);
+        }
+    }, [setInteractive]);
+
+    // Drag moves the overlay window itself through the main process, which
+    // also persists the resting position. Unlike the in-app pet, the desktop
+    // pet starts dragging on press (no long-press) so it feels like grabbing
+    // a floating window. Moves are coalesced to rAF frames to keep the drag
+    // smooth and avoid IPC spam.
+    const pendingMoveRef = React.useRef<{ x: number; y: number } | null>(null);
+    const moveRafRef = React.useRef(0);
+
+    const flushPendingMove = React.useCallback(() => {
+        if (moveRafRef.current) {
+            cancelAnimationFrame(moveRafRef.current);
+            moveRafRef.current = 0;
+        }
+        const next = pendingMoveRef.current;
+        pendingMoveRef.current = null;
+        if (next) {
+            void invokeDesktop('pet_overlay_move_to', next);
+        }
+    }, []);
+
+    const drag = usePetDrag({
+        longPressMs: 0,
+        onDragStart: () => {
+            isDraggingRef.current = true;
+            setIsHovered(false);
+            setInteractive(true);
+        },
+        onDragMoveTo: (x, y) => {
+            pendingMoveRef.current = { x, y };
+            if (moveRafRef.current) return;
+            moveRafRef.current = requestAnimationFrame(() => {
+                moveRafRef.current = 0;
+                const next = pendingMoveRef.current;
+                pendingMoveRef.current = null;
+                if (next) {
+                    void invokeDesktop('pet_overlay_move_to', next);
+                }
+            });
+        },
+        onDragEnd: () => {
+            isDraggingRef.current = false;
+            flushPendingMove();
+        },
+    });
+
+    React.useEffect(() => {
+        return () => {
+            if (moveRafRef.current) {
+                cancelAnimationFrame(moveRafRef.current);
+            }
+        };
+    }, []);
+
+    // After a drag ends, check whether the pointer is still inside the
+    // content wrapper. If not, restore click-through immediately.
+    const handlePointerUp = React.useCallback(
+        (event: React.PointerEvent<HTMLDivElement>) => {
+            drag.pointerProps.onPointerUp(event);
+            const wrapper = interactiveRef.current;
+            const stillOver = wrapper !== null && wrapper.contains(document.elementFromPoint(event.clientX, event.clientY));
+            setIsHovered(stillOver);
+            if (stillOver) {
+                setHoverPlayedOnce(false);
+            }
+            if (!isDraggingRef.current) {
+                setInteractive(stillOver);
+            }
+        },
+        [drag.pointerProps, setInteractive],
+    );
+
+    // Fallback to forwarded mouse-move messages: even if mouseenter/leave
+    // events are flaky over the transparent window, re-assert the interactive
+    // state from the element under the cursor (rAF-throttled).
+    React.useEffect(() => {
+        if (typeof document === 'undefined') return;
+        let raf = 0;
+        let wasOver = false;
+        const onMouseMove = (event: MouseEvent) => {
+            if (raf) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = 0;
+                if (isDraggingRef.current) return;
+                const wrapper = interactiveRef.current;
+                const over = wrapper !== null && wrapper.contains(document.elementFromPoint(event.clientX, event.clientY));
+                setIsHovered(over);
+                if (over && !wasOver) {
+                    setHoverPlayedOnce(false);
+                }
+                wasOver = over;
+                setInteractive(over);
+            });
+        };
+        document.addEventListener('mousemove', onMouseMove, true);
+        return () => {
+            if (raf) window.cancelAnimationFrame(raf);
+            document.removeEventListener('mousemove', onMouseMove, true);
+        };
+    }, [setInteractive]);
+
+    const animationState: PetAnimationState = React.useMemo(() => {
+        if (drag.isDragging) return 'running';
+        if (isHovered && display.state === 'ready' && !hoverPlayedOnce) return 'hover';
+        return display.state;
+    }, [drag.isDragging, isHovered, hoverPlayedOnce, display.state]);
+
+    React.useEffect(() => {
+        if (!image || !petRef.current) return;
+        const el = petRef.current;
+
+        const track = animationForState(animationState);
         let raf = 0;
         let start = performance.now();
 
         const draw = (now: number) => {
-            const frameIndex = frameIndexAtElapsed(track, now - start);
+            const elapsed = now - start;
+            const frameIndex = frameIndexAtElapsed(track, elapsed);
             const sprite = track.frames[frameIndex];
-            const sx = (sprite % SPRITESHEET_COLUMNS) * FRAME_WIDTH;
-            const sy = Math.floor(sprite / SPRITESHEET_COLUMNS) * FRAME_HEIGHT;
-            ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-            ctx.drawImage(image, sx, sy, FRAME_WIDTH, FRAME_HEIGHT, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+            const sx = (sprite % SPRITESHEET_COLUMNS) * displayWidth;
+            const sy = Math.floor(sprite / SPRITESHEET_COLUMNS) * displayHeight;
+            el.style.backgroundPosition = `-${sx}px -${sy}px`;
+
+            // One-shot hover reaction: after the track completes, return to idle.
+            if (animationState === 'hover' && track.loopStart === null && elapsed >= trackDuration(track)) {
+                setHoverPlayedOnce(true);
+                return;
+            }
             raf = requestAnimationFrame(draw);
         };
 
@@ -177,44 +323,47 @@ export function PetOverlay() {
             cancelAnimationFrame(raf);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [image, display.state]);
-
-    // Long-press drag moves the overlay window itself through the main
-    // process, which also persists the resting position.
-    const drag = usePetDrag({
-        onDragMove: (dx, dy) => {
-            void invokeDesktop('pet_overlay_move', { dx, dy });
-        },
-    });
+    }, [image, animationState, displayHeight, displayWidth]);
 
     return (
-        <div
-            {...drag.pointerProps}
-            className={cn(
-                'flex h-full w-full touch-none select-none flex-col items-end justify-end gap-1.5 overflow-visible',
-                drag.isDragging ? 'cursor-grabbing' : 'cursor-grab',
-            )}
-        >
-            <PetStatusBubble state={display.state} preview={display.preview} petSize={display.petSize} />
-            {assetStatus === 'ok' && image ? (
-                <canvas
-                    ref={canvasRef}
-                    width={FRAME_WIDTH}
-                    height={FRAME_HEIGHT}
-                    style={{ height: displayHeight, width: displayWidth }}
-                    aria-hidden="true"
-                />
-            ) : (
-                <div
-                    className="flex items-center justify-center"
-                    style={{ height: displayHeight, width: displayWidth }}
-                >
-                    <span className="text-xs text-muted-foreground">
-                        {assetStatus === 'failed' ? t('chat.pets.unavailable') : t('chat.pets.loading')}
-                    </span>
-                </div>
-            )}
+        <div className="flex h-full w-full flex-col items-end justify-end overflow-visible select-none">
+            <div
+                ref={interactiveRef}
+                {...drag.pointerProps}
+                onPointerUp={handlePointerUp}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                className={cn(
+                    'flex w-max touch-none select-none flex-col items-end gap-1.5 bg-transparent outline-none',
+                    drag.isDragging ? 'cursor-grabbing' : 'cursor-grab',
+                )}
+            >
+                <PetStatusBubble state={display.state} preview={display.preview} petSize={display.petSize} translucent />
+                {assetStatus === 'ok' && image ? (
+                    <div
+                        ref={petRef}
+                        className="outline-none"
+                        style={{
+                            height: displayHeight,
+                            width: displayWidth,
+                            backgroundImage: `url(${image.src})`,
+                            backgroundSize: `${SPRITESHEET_COLUMNS * displayWidth}px ${9 * displayHeight}px`,
+                            backgroundPosition: '0 0',
+                            backgroundRepeat: 'no-repeat',
+                        }}
+                        aria-hidden="true"
+                    />
+                ) : (
+                    <div
+                        className="flex items-center justify-center bg-transparent outline-none"
+                        style={{ height: displayHeight, width: displayWidth }}
+                    >
+                        <span className="text-xs text-muted-foreground">
+                            {assetStatus === 'failed' ? t('chat.pets.unavailable') : t('chat.pets.loading')}
+                        </span>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
-

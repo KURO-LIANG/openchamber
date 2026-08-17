@@ -101,6 +101,7 @@ export const settingsDict = {
   "settings.page.pets.choosePetDescription": "Elige un compañero para que te acompañe mientras trabajas.",
   "settings.page.pets.section.customPets": "Mascotas personalizadas",
   "settings.page.pets.action.openFolder": "Abrir carpeta de mascotas",
+  "settings.page.pets.action.openFolderFailed": "No se pudo abrir la carpeta de mascotas",
   "settings.page.pets.section.appearance": "Apariencia",
   "settings.page.pets.field.petSize": "Tamaño de mascota",
   "settings.page.pets.field.petSizeDescription": "Haz tu mascota más pequeña o más grande.",

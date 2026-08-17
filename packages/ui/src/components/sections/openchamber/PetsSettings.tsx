@@ -1,4 +1,5 @@
 import React from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/icon/Icon';
 import { useI18n } from '@/lib/i18n';
@@ -69,8 +70,12 @@ export const PetsSettings: React.FC = () => {
         } catch {
             // Already exists (or read-only home): proceed to reveal anyway.
         }
-        await runtimeApis.files.revealPath(dir);
-    }, [homeDirectory, runtimeApis]);
+        try {
+            await runtimeApis.files.revealPath(dir);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : t('settings.page.pets.action.openFolderFailed'));
+        }
+    }, [homeDirectory, runtimeApis, t]);
 
     const customPetsDir = homeDirectory ? getCustomPetsDirectory(homeDirectory) : '';
 

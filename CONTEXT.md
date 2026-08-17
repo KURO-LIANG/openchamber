@@ -49,3 +49,37 @@ _Avoid_: autoplay guard, focus check, background suppression
 **音效播放点 (Sound Playback Point)**:
 前端事件处理代码中调用 `playSoundById()` 的位置。每个音效通道恰好对应一个播放点：agent 通道在 `session.idle` 时播放、errors 通道在 `session.error` 时播放、permissions 通道在 `permission.asked` 时播放。`question.asked` 事件不属于任何音效通道。
 _Avoid_: sound hook, trigger point
+
+### 宠物 (Pets)
+
+**宠物 (Pet)**:
+可在应用界面展示的虚拟形象，拥有 id、名称与动画资产。内置 8 只，用户可在自定义目录放置自建宠物（每目录一只）。
+_Avoid_: mascot, avatar, companion
+
+**宠物状态 (Pet State)**:
+宠物反映会话的四态之一：running / needs-input / ready / blocked，语义对齐 codex。
+_Avoid_: status, phase
+
+**宠物气泡 (Pet Bubble)**:
+宠物上方显示状态文案与回复预览的气泡；Web/移动端挂聊天区，桌面端挂悬浮窗。
+_Avoid_: speech bubble, status box
+
+**宠物悬浮窗 (Pet Overlay Window)**:
+桌面端（Electron）承载宠物的独立 always-on-top 透明窗口，与主窗口同 origin 共享资产缓存。
+_Avoid_: pet window, floating pet
+
+**宠物资产缓存 (Pet Asset Cache)**:
+宠物雪碧图按需下载后的本地缓存（Electron 落磁盘、Web/移动落 IndexedDB），缓存键为版本化文件名。
+_Avoid_: sprite cache
+
+**宠物可见性 (Pet Visibility)**:
+跨端同步的全局设置，决定宠物是否显示；桌面/Web 默认显示，移动端默认隐藏。
+_Avoid_: show pet toggle
+
+**宠物偏好 (Pet Preference)**:
+用户选择的宠物 id，仅存本地（localStorage），不跨端同步。
+_Avoid_: selected pet
+
+**悬停反应 (Hover Reaction)**:
+空闲（ready）状态鼠标悬停宠物触发的一次性动画，播完回到常态动画；每次移入重新触发。
+_Avoid_: hover jump, hop, excited animation

@@ -101,6 +101,7 @@ export const settingsDict = {
   'settings.page.pets.choosePetDescription': '作業中に寄り添う仲間を選んでください。',
   'settings.page.pets.section.customPets': 'カスタムペット',
   'settings.page.pets.action.openFolder': 'ペットフォルダを開く',
+  'settings.page.pets.action.openFolderFailed': 'ペットフォルダを開けませんでした',
   'settings.page.pets.section.appearance': '外観',
   'settings.page.pets.field.petSize': 'ペットのサイズ',
   'settings.page.pets.field.petSizeDescription': 'ペットを小さくしたり大きくしたりします。',
