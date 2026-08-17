@@ -37,10 +37,30 @@ import {
     type CustomPetCatalogEntry,
 } from './customPets';
 import { usePetDrag } from './usePetDrag';
-import { PetStatusBubble } from './PetStatusBubble';
+import { BUBBLE_FLIP_DEAD_ZONE_PX, PetStatusBubble, type BubbleAlign } from './PetStatusBubble';
 
 /** Codex PET_TARGET_HEIGHT_PX, scaled up; width keeps the 192:208 frame aspect. */
 const DISPLAY_HEIGHT = 96;
+
+/** A display work area (in screen coordinates), pushed by the main process. */
+interface WorkArea {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Which side of the pet the bubble hangs from: once the window's center
+ * crosses the midline of the display work area it is clamped to (beyond the
+ * dead zone), the bubble flips to the opposite side so it never overflows the
+ * screen edge the window is dragged toward.
+ */
+function resolveOverlayBubbleAlign(windowCenterX: number, workAreaCenterX: number, previous: BubbleAlign): BubbleAlign {
+    if (windowCenterX > workAreaCenterX + BUBBLE_FLIP_DEAD_ZONE_PX) return 'right';
+    if (windowCenterX < workAreaCenterX - BUBBLE_FLIP_DEAD_ZONE_PX) return 'left';
+    return previous;
+}
 
 /**
  * Vertical space reserved above the sprite for the status bubble column.
@@ -92,6 +112,57 @@ export function PetOverlay() {
     const [isHovered, setIsHovered] = React.useState(false);
     const [hoverPlayedOnce, setHoverPlayedOnce] = React.useState(false);
     const petRef = React.useRef<HTMLDivElement>(null);
+
+    // The display work area the window is currently clamped to, pushed by the
+    // main process whenever the window is created or moved
+    // (`pet-overlay-work-area`). Falls back to the primary display until the
+    // first push arrives.
+    const workAreaRef = React.useRef<WorkArea | null>(null);
+
+    React.useEffect(() => {
+        const onWorkArea = (event: Event) => {
+            const detail = (event as CustomEvent).detail as Record<string, unknown> | null;
+            if (
+                detail &&
+                typeof detail.x === 'number' &&
+                typeof detail.y === 'number' &&
+                typeof detail.width === 'number' &&
+                typeof detail.height === 'number'
+            ) {
+                workAreaRef.current = { x: detail.x, y: detail.y, width: detail.width, height: detail.height };
+            }
+        };
+        window.addEventListener('pet-overlay-work-area', onWorkArea);
+        return () => window.removeEventListener('pet-overlay-work-area', onWorkArea);
+    }, []);
+
+    // Flip the bubble side in lockstep with the window position. The window
+    // moves only on drag or on startup restore (both driven by the main
+    // process), so a rAF loop reading window.screenX is cheap and always in
+    // sync; the ref keeps the flip from re-rendering every frame.
+    const [bubbleAlign, setBubbleAlign] = React.useState<BubbleAlign>('right');
+    const bubbleAlignRef = React.useRef<BubbleAlign>('right');
+
+    React.useEffect(() => {
+        let raf = 0;
+        const tick = () => {
+            raf = requestAnimationFrame(tick);
+            const area = workAreaRef.current;
+            const windowCenterX = window.screenX + window.outerWidth / 2;
+            // Primary-display fallback only until the main process pushes the
+            // real work area (the primary display's work area starts at x=0).
+            const workAreaCenterX = area
+                ? area.x + area.width / 2
+                : window.screen.availWidth / 2;
+            const next = resolveOverlayBubbleAlign(windowCenterX, workAreaCenterX, bubbleAlignRef.current);
+            if (next !== bubbleAlignRef.current) {
+                bubbleAlignRef.current = next;
+                setBubbleAlign(next);
+            }
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, []);
 
     // The main window pushes the authoritative display state over the native
     // bridge; the initial snapshot is replayed by the main process when the
@@ -334,11 +405,19 @@ export function PetOverlay() {
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
                 className={cn(
-                    'flex w-max touch-none select-none flex-col items-end gap-1.5 bg-transparent outline-none',
+                    'flex w-max touch-none select-none flex-col gap-1.5 bg-transparent outline-none',
+                    bubbleAlign === 'left' ? 'items-start' : 'items-end',
                     drag.isDragging ? 'cursor-grabbing' : 'cursor-grab',
                 )}
             >
-                <PetStatusBubble state={display.state} preview={display.preview} petSize={display.petSize} translucent />
+                <PetStatusBubble
+                    key={bubbleAlign}
+                    align={bubbleAlign}
+                    state={display.state}
+                    preview={display.preview}
+                    petSize={display.petSize}
+                    translucent
+                />
                 {assetStatus === 'ok' && image ? (
                     <div
                         ref={petRef}

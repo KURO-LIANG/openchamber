@@ -71,10 +71,12 @@
 ### 5.4 渲染
 
 - Web/移动挂载点：`ChatContainer.tsx` 的 `data-composer-bound` relative 容器（:1244）；桌面端（Electron）不渲染应用内气泡，由独立 always-on-top 透明悬浮窗（`pet-overlay.html`）承载
-- 桌面悬浮窗：主进程创建（transparent/frameless/`alwaysOnTop('floating')`/skipTaskbar/focusable:false/`hasShadow:false`），与主窗口同 origin 共享 IndexedDB 资产缓存；状态与回复预览由主窗口 `PetOverlayBridge` 经 `pet_overlay_show|hide|update` IPC 单向推送，主进程重放最新载荷；窗口位置存 `settings.json#desktopPetOverlayPosition`
+- 桌面悬浮窗：主进程创建（transparent/frameless/`alwaysOnTop('floating')`/skipTaskbar/focusable:false/`hasShadow:false`；macOS 上 `type: 'panel'`），与主窗口同 origin 共享 IndexedDB 资产缓存；状态与回复预览由主窗口 `PetOverlayBridge` 经 `pet_overlay_show|hide|update` IPC 单向推送，主进程重放最新载荷；窗口位置存 `settings.json#desktopPetOverlayPosition`
+- 多桌面（macOS Spaces）：悬浮窗 `setVisibleOnAllWorkspaces(true)` 在所有 Space 可见；`type: 'panel'`（NSPanel）保证**点击/拖拽宠物不激活 app**——normal 窗口点击会激活宿主 app 并把用户带回 app 所在 Space，面板窗口不会；`app.on('activate')` 的候选窗口过滤 `__ocPetOverlay`，Dock 点击永不聚焦宠物窗口
 - 渲染：不使用 `<canvas>`，宠物用 `<div>` + `background-image`（blob/data URL 雪碧图）+ rAF 更新 `background-position` 播放帧动画，彻底消除画布背景；`background-size` 必须按网格缩放到 div 尺寸（`SPRITESHEET_COLUMNS * displayWidth` × `9 * displayHeight`），动画位移用缩放后的网格坐标（`(sprite % 8) * displayWidth` / `floor(sprite / 8) * displayHeight`）——若直接使用雪碧图原始尺寸（1536×1872）与原始帧坐标，div 窗口只会显示每帧约 1/4 的切片，宠物呈现为被裁剪的局部放大图（canvas 版 drawImage 裁剪完整帧后缩放，不会出现此问题）
 - 悬浮窗透明：窗口 `transparent: true` + `pet-overlay.html` 内联 `html, body, #root { background: transparent !important }` + `src/pet-overlay.css`（在共享 `@openchamber/ui/index.css` 之后加载，`!important` 强制透明）——共享样式的 `body { background-color: var(--background) }` 在构建产物中位于内联样式之后，若不在 `@layer` 内会胜出，浅色主题下会画出白色背景块；悬浮窗页面不得引入任何会为 `body`/`#root` 上色的规则
 - 悬浮窗气泡：`PetStatusBubble` 增加 `translucent` 选项，悬浮窗（`PetOverlay`）传入后用 `color-mix(in srgb, var(--popover) 55%, transparent)` 半透明表面替代纯 `--popover` 背景——浅色主题下 `--popover` 为纯白，实心气泡会在透明悬浮窗上呈现为紧贴宠物的白色矩形；应用内气泡（`PetBubble`）保持实心 popover 表面不变
+- 气泡方向翻转：气泡始终在宠物正上方，"方向"= 水平对齐（`items-end` ↔ `items-start`，尾巴 `right-4` ↔ `left-4` 跟随）。宠物中心越过所在中线（应用内 = 视口中线，桌面 = 窗口所在显示器工作区中线，由主进程 `pet-overlay-work-area` 事件推送）即翻转，±24px 滞回死区防抖；拖拽实时生效（应用内 effect 监听 offset/resize，桌面 rAF 循环读 `window.screenX`）；翻转经 `key={align}` 重挂播放 200ms 滑入淡入（`pet-bubble-slide-in-*`，仅 transform/opacity）。应用内气泡另加 `capToViewportHalf` 把最大宽度限制为 `min(16rem*petSize, 50vw - 1.5rem)`，小窗+大宠物尺寸翻转后也不越界；桌面窗口本身被 clamp 在工作区内，无需此约束
 - 窗口尺寸：按宠物实际宽度与气泡最大宽度（`16rem * petSize` + padding/border）计算宽度；高度 = 宠物高度 + 气泡区预留 `PET_OVERLAY_BUBBLE_SPACE_HEIGHT`（112px，main.mjs 与 PetOverlay.tsx 两处常量保持一致），预留值按 3 行预览的最大气泡高度计算，防止气泡把宠物顶出窗口顶部；默认 `setIgnoreMouseEvents(true, { forward: true })`，鼠标进入宠物/气泡区域才切 interactive
 - 交互：**不可点击切换宠物**；桌面端按下即拖动（`longPressMs: 0`），以绝对屏幕坐标 `pet_overlay_move_to` 移动窗口并持久化；Web/移动仍长按 400ms 后以 transform 偏移并持久化到 localStorage
 - 动画：状态触发后持续保持（running/needs-input/blocked 主帧循环，`loopStart: 0`），直至状态变化；`ready` 为呼吸循环；空闲时鼠标悬停宠物播放 hover 反应动画（帧 33-36 连续跳跃 3 遍后回 idle；雪碧图帧 37-39 为空白帧，不入轨道，`loopStart: null` 使一次性停止逻辑生效，每次移入重新触发）；拖拽时播放 `running` 奔跑动画；气泡文案同样持续显示
@@ -124,6 +126,8 @@
 | 服务端白名单 | `bun run --cwd packages/web test`（settings-helpers 用例） |
 | 死代码/导出形状 | `bun run dead-code` |
 | 手动 | 桌面/Web 默认显示、移动默认隐藏；断网降级；点击切换 |
+| 手动（气泡翻转） | 应用内与桌面双端：宠物拖到屏幕最左/最右气泡不越界、中线往返翻转、±24px 内小幅拖动不抖动、翻转动画、窗口 resize 后方向正确、刷新/重启后按持久化位置显示正确方向；桌面端多显示器时气泡按窗口所在显示器中线翻转 |
+| 手动（多桌面） | macOS 两个以上 Space：宠物在每个 Space 可见；在其他 Space 点击/拖拽宠物不切回 app 所在桌面；Dock 点击不聚焦宠物窗口；宠物窗口不出现在 Mission Control 窗口切换器（panel 行为） |
 
 ## 8. 失败与回滚考量
 

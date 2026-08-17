@@ -34,7 +34,7 @@ import { loadCustomPetSprite, resolvePet, useAllPets, type CustomPetCatalogEntry
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { usePetDrag } from './usePetDrag';
 import { usePetAssistantPreview } from './usePetAssistantPreview';
-import { PetStatusBubble } from './PetStatusBubble';
+import { BUBBLE_FLIP_DEAD_ZONE_PX, PetStatusBubble, type BubbleAlign } from './PetStatusBubble';
 
 /** Codex PET_TARGET_HEIGHT_PX, scaled up; width keeps the 192:208 frame aspect. */
 const DISPLAY_HEIGHT = 96;
@@ -67,6 +67,23 @@ function persistInlinePosition(position: InlinePosition) {
     } catch {
         // Non-fatal: the position just does not persist this time.
     }
+}
+
+/**
+ * Which side of the pet the bubble hangs from. The container is anchored
+ * `right-3` (12px from the viewport's right edge) and translated by the drag
+ * offset; the sprite sits flush to the container's right edge, so its
+ * horizontal center is independent of the bubble width. Once that center
+ * crosses the viewport midline (beyond the dead zone), the bubble flips to
+ * the opposite side so it never overflows the screen edge the pet is dragged
+ * toward.
+ */
+function resolveInlineBubbleAlign(offsetX: number, viewportWidth: number, petWidth: number, previous: BubbleAlign): BubbleAlign {
+    const petCenterX = viewportWidth - 12 + offsetX - petWidth / 2;
+    const midline = viewportWidth / 2;
+    if (petCenterX > midline + BUBBLE_FLIP_DEAD_ZONE_PX) return 'right';
+    if (petCenterX < midline - BUBBLE_FLIP_DEAD_ZONE_PX) return 'left';
+    return previous;
 }
 
 export function PetBubble() {
@@ -108,6 +125,29 @@ export function PetBubble() {
         }),
         onDragEnd: () => persistInlinePosition(offsetRef.current),
     });
+
+    // Start on the correct side for the persisted position instead of flashing
+    // the default side for a frame after a reload.
+    const [bubbleAlign, setBubbleAlign] = React.useState<BubbleAlign>(() =>
+        resolveInlineBubbleAlign(readInlinePosition().x, window.innerWidth, displayWidth, 'right'),
+    );
+
+    // Re-resolve on drag movement (offset.x) and on viewport resize, keeping
+    // the last side inside the dead zone (hysteresis).
+    const refreshBubbleAlign = React.useCallback(() => {
+        setBubbleAlign((previous) =>
+            resolveInlineBubbleAlign(offsetRef.current.x, window.innerWidth, displayWidth, previous),
+        );
+    }, [displayWidth]);
+
+    React.useEffect(() => {
+        refreshBubbleAlign();
+    }, [refreshBubbleAlign, offset.x]);
+
+    React.useEffect(() => {
+        window.addEventListener('resize', refreshBubbleAlign);
+        return () => window.removeEventListener('resize', refreshBubbleAlign);
+    }, [refreshBubbleAlign]);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const image = React.useMemo(() => (pet ? getPetAssetImage(pet.id) : null), [assetStatus, pet]);
@@ -155,12 +195,20 @@ export function PetBubble() {
         <div
             {...drag.pointerProps}
             className={cn(
-                'absolute right-3 bottom-full mb-2.5 z-30 flex touch-none select-none flex-col items-end gap-1.5 bg-transparent outline-none',
+                'absolute right-3 bottom-full mb-2.5 z-30 flex touch-none select-none flex-col gap-1.5 bg-transparent outline-none',
+                bubbleAlign === 'left' ? 'items-start' : 'items-end',
                 drag.isDragging ? 'cursor-grabbing' : 'cursor-grab',
             )}
             style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
         >
-            <PetStatusBubble state={state} preview={preview} petSize={petSize} />
+            <PetStatusBubble
+                key={bubbleAlign}
+                align={bubbleAlign}
+                state={state}
+                preview={preview}
+                petSize={petSize}
+                capToViewportHalf
+            />
             {assetStatus === 'ok' && image ? (
                 <div
                     ref={petRef}

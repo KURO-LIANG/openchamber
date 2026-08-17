@@ -2948,6 +2948,23 @@ const sendPetOverlayUpdate = (browserWindow, payload) => {
   });
 };
 
+// Push the work area of the display the overlay window currently sits on, so
+// the renderer can flip the bubble side around that display's midline (not
+// the primary display's) when the window is dragged across monitors.
+const sendPetOverlayWorkArea = (browserWindow) => {
+  if (!browserWindow || browserWindow.isDestroyed()) return;
+  try {
+    const display = screen.getDisplayMatching(browserWindow.getBounds()) || screen.getPrimaryDisplay();
+    const { x, y, width, height } = display.workArea;
+    browserWindow.webContents.send('openchamber:emit', {
+      event: 'pet-overlay-work-area',
+      detail: { x, y, width, height },
+    });
+  } catch {
+    // The overlay keeps its primary-display fallback until the next push.
+  }
+};
+
 const createPetOverlayWindow = async () => {
   if (state.petOverlayWindow && !state.petOverlayWindow.isDestroyed()) {
     return state.petOverlayWindow;
@@ -2964,6 +2981,11 @@ const createPetOverlayWindow = async () => {
   const desktopHome = os.homedir() || '';
   const browserWindow = new BrowserWindow({
     title: 'OpenChamber Pet',
+    // macOS: an NSPanel — clicking it does not activate the app, so touching
+    // the pet never pulls the user back to the Space the main window lives
+    // in. Combined with setVisibleOnAllWorkspaces below, the pet stays
+    // visible and draggable on every Space. Other platforms ignore `type`.
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
     width,
     height,
     x: position.x,
@@ -3037,6 +3059,7 @@ const createPetOverlayWindow = async () => {
     if (state.petOverlayLastPayload) {
       sendPetOverlayUpdate(browserWindow, state.petOverlayLastPayload);
     }
+    sendPetOverlayWorkArea(browserWindow);
   });
 
   browserWindow.showInactive();
@@ -4691,6 +4714,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         const bounds = state.petOverlayWindow.getBounds();
         const next = clampPetOverlayPosition({ x, y }, bounds.width, bounds.height);
         state.petOverlayWindow.setPosition(next.x, next.y);
+        sendPetOverlayWorkArea(state.petOverlayWindow);
         debouncePetOverlayPositionPersist(state.petOverlayWindow);
       }
       return null;
@@ -5406,7 +5430,11 @@ app.on('open-url', (event, url) => {
 });
 
 app.on('activate', async () => {
-  const windows = BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
+  // The pet overlay window is not a surface the user returns to; exclude it
+  // so dock clicks never focus the pet or pull the app toward its Space.
+  const windows = BrowserWindow.getAllWindows().filter(
+    (window) => !window.isDestroyed() && !window.__ocPetOverlay,
+  );
   // Only spawn a main window when there is genuinely nothing to come back to.
   if (windows.length === 0) {
     await openMainWindow();
@@ -5418,7 +5446,7 @@ app.on('activate', async () => {
   // This covers e.g. "only a minimized mini-chat remains": it should un-minimize
   // rather than open the main window.
   const remembered = resolveTraySurface();
-  const targetWindow = (remembered && !remembered.isDestroyed())
+  const targetWindow = (remembered && !remembered.isDestroyed() && !remembered.__ocPetOverlay)
     ? remembered
     : (windows.find((window) => window.isVisible() && !window.isMinimized()) || windows[0]);
   if (targetWindow.isMinimized()) targetWindow.restore();
