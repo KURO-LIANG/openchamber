@@ -143,6 +143,13 @@ export async function generateSmallModelText({ prompt, system, maxOutputTokens, 
     );
   }
 
+  if (resolved.providerID === 'claude-code') {
+    throw Object.assign(
+      new Error('Claude Code cannot be used for background small-model actions. Choose another Small Model in Settings → Sessions.'),
+      { statusCode: 422, code: 'small-model-provider-unsupported' },
+    );
+  }
+
   // Callers with a session context can forbid silently switching providers:
   // an explicit user choice (settings override, opencode config, request
   // model) is always allowed, anything else must stay on the session's
@@ -211,6 +218,7 @@ export function listAuthenticatedProviders() {
     for (const providerID of Object.keys(readConfigApiKeyProviders(process.cwd()))) {
       ids.add(providerID);
     }
+    ids.delete('claude-code');
     // The catalog id is github-copilot while legacy auth entries may sit
     // under the copilot alias.
     if (isUsableAuthEntry(getAuthEntryForProvider(auth, 'github-copilot'))) {
