@@ -4,6 +4,7 @@ import { PetsSettings } from './PetsSettings';
 import { AboutSettings } from './AboutSettings';
 import { SessionRetentionSettings } from './SessionRetentionSettings';
 import { PasskeySettings } from './PasskeySettings';
+import { AppLinkSecuritySettings } from './AppLinkSecuritySettings';
 import { DefaultsSettings } from './DefaultsSettings';
 import { GitSettings } from './GitSettings';
 import { NotificationSettings } from './NotificationSettings';
@@ -56,6 +57,7 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
                 {!isVSCode && <OpenCodeCliSettings />}
                 {!isVSCode && <OpenChamberToolsSettings />}
                 <SessionRetentionSettings />
+                <AppLinkSecuritySettings />
                 {isWebRuntime() && !isDesktopShell() && !isVSCode && !isCapacitorApp() && <PasskeySettings />}
                 {showAbout && <AboutSettings />}
             </SettingsPageLayout>
@@ -150,6 +152,7 @@ const GeneralSectionContent: React.FC = () => {
         <>
             {showDesktopNetworkSettings && <DesktopNetworkSettings />}
             {showPasskeySettings && <PasskeySettings />}
+            <AppLinkSecuritySettings />
             {!isVSCode && <OpenCodeCliSettings />}
             {!isVSCode && <OpenChamberToolsSettings />}
             <OpenChamberVisualSettings visibleSettings={[

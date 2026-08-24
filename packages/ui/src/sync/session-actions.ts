@@ -28,6 +28,7 @@ import {
   type SessionMetadataRecord,
 } from "@/lib/sessionReviewMetadata"
 import { withContextObligatoryMessage, type ContextObligatoryMessage } from "@/lib/contextObligatoryMessages"
+import { getBtwOriginalSessionID, getBtwSessionID, isBtwSession, withoutBtwSessionLink } from "@/lib/sessionBtwMetadata"
 import { withLinkedIssue, type LinkedIssue } from "@/lib/linkedIssues"
 import { getImperativeSessionMessageLoader } from "./session-message-loader"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
@@ -37,6 +38,7 @@ import { getStaleRunningToolMessageID } from "./materialization"
 import { normalizePath } from "@/lib/pathNormalization"
 import { mergeMessages } from "./optimistic"
 import { messagesBefore, messagesFrom } from "./message-ordering"
+import { deleteChatDirectory } from "@/lib/chatDirectories"
 
 const MESSAGE_REFETCH_LIMIT = 100
 const SEND_CONFIRMATION_REFETCH_LIMIT = 30
@@ -728,6 +730,7 @@ export async function createSession(
   directoryOverride?: string | null,
   parentID?: string | null,
   metadata?: Record<string, unknown>,
+  selectionTransition?: "submitted-draft",
 ): Promise<Session | null> {
   try {
     // Capture the effective directory used for session creation so we can fall
@@ -748,7 +751,7 @@ export async function createSession(
     if (sessionDirectory) {
       registerSessionDirectory(session.id, sessionDirectory)
     }
-    useSessionUIStore.getState().setCurrentSession(session.id, sessionDirectory)
+    useSessionUIStore.getState().setCurrentSession(session.id, sessionDirectory, selectionTransition)
     useSessionUIStore.getState().markSessionAsOpenChamberCreated(session.id)
     useGlobalSessionsStore.getState().upsertSession(session)
     return session
@@ -794,6 +797,7 @@ export async function patchSessionMetadata(
   useGlobalSessionsStore.getState().upsertSession(updated)
   const sessionDirectory = (updated as { directory?: string | null }).directory ?? targetDirectory
   if (sessionDirectory) registerSessionDirectory(updated.id, sessionDirectory)
+  mirrorSessionIntoLiveStores(updated, sessionDirectory ?? undefined)
   return updated
 }
 
@@ -803,11 +807,8 @@ export async function setLinkedIssue(
   issue: LinkedIssue,
   linked: boolean,
 ): Promise<Session> {
-  const updated = await patchSessionMetadata(sessionId, directory, (metadata) =>
+  return patchSessionMetadata(sessionId, directory, (metadata) =>
     withLinkedIssue(metadata, issue, linked))
-  const sessionDirectory = (updated as Session & { directory?: string | null }).directory ?? directory ?? undefined
-  mirrorSessionIntoLiveStores(updated, sessionDirectory ?? undefined)
-  return updated
 }
 
 export async function setContextObligatoryMessage(
@@ -816,11 +817,8 @@ export async function setContextObligatoryMessage(
   message: ContextObligatoryMessage,
   pinned: boolean,
 ): Promise<Session> {
-  const updated = await patchSessionMetadata(sessionId, directory, (metadata) =>
+  return patchSessionMetadata(sessionId, directory, (metadata) =>
     withContextObligatoryMessage(metadata, message, pinned))
-  const sessionDirectory = (updated as Session & { directory?: string | null }).directory ?? directory ?? undefined
-  mirrorSessionIntoLiveStores(updated, sessionDirectory ?? undefined)
-  return updated
 }
 
 async function cleanupReviewMetadataBeforeDelete(
@@ -836,18 +834,41 @@ async function cleanupReviewMetadataBeforeDelete(
     return
   }
   if (isStaleRuntime(expectedRuntimeKey)) return
-  if (!isReviewSession(session)) return
-  const originalSessionID = getOriginalSessionID(session)
-  if (!originalSessionID) return
-  try {
-    await patchSessionMetadata(originalSessionID, directory ?? getSessionDirectory(originalSessionID), (metadata) =>
-      withoutReviewSessionLink(metadata, sessionId),
-      expectedRuntimeKey,
-    )
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (/not found/i.test(message)) return
-    console.warn("[session-actions] review metadata cleanup failed before delete", error)
+
+  const unlinkParent = async (originalSessionID: string, unlink: (metadata: SessionMetadataRecord) => SessionMetadataRecord) => {
+    try {
+      await patchSessionMetadata(originalSessionID, directory ?? getSessionDirectory(originalSessionID), unlink, expectedRuntimeKey)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/not found/i.test(message)) return
+      console.warn("[session-actions] linked-session metadata cleanup failed before delete", error)
+    }
+  }
+
+  if (isReviewSession(session)) {
+    const originalSessionID = getOriginalSessionID(session)
+    if (originalSessionID) await unlinkParent(originalSessionID, (metadata) => withoutReviewSessionLink(metadata, sessionId))
+    return
+  }
+
+  if (isBtwSession(session)) {
+    const originalSessionID = getBtwOriginalSessionID(session)
+    if (originalSessionID) await unlinkParent(originalSessionID, (metadata) => withoutBtwSessionLink(metadata, sessionId))
+    return
+  }
+
+  // Deleting or archiving a session that has an active btw fork also removes
+  // the fork: it is a temporary session that only exists for its parent's
+  // panel. Best-effort — a failed fork delete must not block the parent's
+  // operation; the orphaned fork stays visible in the sidebar.
+  const btwSessionID = getBtwSessionID(session)
+  if (btwSessionID) {
+    try {
+      if (isStaleRuntime(expectedRuntimeKey)) return
+      await deleteSession(btwSessionID, { expectedRuntimeKey })
+    } catch (error) {
+      console.warn("[session-actions] failed to delete btw fork before parent delete", error)
+    }
   }
 }
 
@@ -921,6 +942,15 @@ function finalizeConfirmedSessionDeletion(
   }
 }
 
+async function cleanupDeletedChatDirectory(directory: string | undefined, deleteDirectory: boolean): Promise<void> {
+  if (!directory || !deleteDirectory) return
+  try {
+    await deleteChatDirectory(directory)
+  } catch (error) {
+    console.warn("[session-actions] deleted chat directory cleanup failed", error)
+  }
+}
+
 export type DeleteSessionOptions = {
   /**
    * Runtime key the deletion is scoped to. Defaults to the active runtime when
@@ -949,6 +979,8 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
   const expectedRuntimeKey = options?.expectedRuntimeKey ?? getRuntimeKey()
   if (isStaleRuntime(expectedRuntimeKey)) return false
   const sessionDirectory = getSessionDirectory(sessionId)
+  const sessionSnapshot = getGlobalSessionSnapshot(sessionId)
+  const deleteManagedDirectory = Boolean(sessionSnapshot && sessionSnapshot.parentID == null)
   try {
     await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
@@ -958,6 +990,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
       throw new Error("session.delete failed: server did not confirm deletion")
     }
     finalizeConfirmedSessionDeletion(sessionId, sessionDirectory, expectedRuntimeKey)
+    await cleanupDeletedChatDirectory(sessionDirectory, deleteManagedDirectory)
     return true
   } catch (error) {
     console.error("[session-actions] deleteSession failed", error)
@@ -967,6 +1000,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
     if ((error as { status?: number })?.status === 404) {
       if (isStaleRuntime(expectedRuntimeKey)) return false
       finalizeConfirmedSessionDeletion(sessionId, sessionDirectory, expectedRuntimeKey)
+      await cleanupDeletedChatDirectory(sessionDirectory, deleteManagedDirectory)
       return true
     }
     return false
@@ -980,6 +1014,8 @@ export async function deleteSessionInDirectory(
   expectedRuntimeKey = getRuntimeKey(),
 ): Promise<boolean> {
   if (isStaleRuntime(expectedRuntimeKey)) return false
+  const sessionSnapshot = getGlobalSessionSnapshot(sessionId)
+  const deleteManagedDirectory = Boolean(sessionSnapshot && sessionSnapshot.parentID == null)
   try {
     await cleanupReviewMetadataBeforeDelete(sessionId, directory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
@@ -989,12 +1025,14 @@ export async function deleteSessionInDirectory(
       throw new Error("session.delete failed: server did not confirm deletion")
     }
     finalizeConfirmedSessionDeletion(sessionId, directory, expectedRuntimeKey)
+    await cleanupDeletedChatDirectory(directory, deleteManagedDirectory)
     return true
   } catch (error) {
     console.error("[session-actions] deleteSessionInDirectory failed", error)
     if ((error as { status?: number })?.status === 404) {
       if (isStaleRuntime(expectedRuntimeKey)) return false
       finalizeConfirmedSessionDeletion(sessionId, directory, expectedRuntimeKey)
+      await cleanupDeletedChatDirectory(directory, deleteManagedDirectory)
       return true
     }
     return false
