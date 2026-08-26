@@ -25,13 +25,22 @@ type UserTextPartProps = {
     messageId: string;
     isMobile: boolean;
     agentMention?: AgentMentionInfo;
+    /**
+     * Message-level collapse: when provided, all parts of the user message
+     * share one expanded state owned by the message body, expanding any part
+     * expands the whole message, and the message body renders the single
+     * collapse control. When absent the part collapses on its own (legacy
+     * single-part behavior).
+     */
+    messageExpanded?: boolean;
+    onExpandMessage?: () => void;
 };
 
 const normalizeUserMessageRenderingMode = (mode: unknown): 'markdown' | 'plain' => {
     return mode === 'markdown' ? 'markdown' : 'plain';
 };
 
-const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMention }) => {
+const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMention, messageExpanded, onExpandMessage }) => {
     // Structured context (inline comments, terminal selections, annotations,
     // PR context) renders as a dedicated block instead of raw prompt text.
     const contextPayload = React.useMemo(() => readContextPart(part), [part]);
@@ -51,7 +60,9 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
     const effectiveDirectory = useEffectiveDirectory();
     const { t } = useI18n();
     const normalizedRenderingMode = normalizeUserMessageRenderingMode(userMessageRenderingMode);
-    const isCollapsed = collapsibleUserMessages && !isExpanded;
+    const isControlled = messageExpanded !== undefined;
+    const effectiveExpanded = messageExpanded ?? isExpanded;
+    const isCollapsed = collapsibleUserMessages && !effectiveExpanded;
     const textRef = React.useRef<HTMLDivElement>(null);
     const skillByName = React.useMemo(() => new Map(skills.map((skill) => [skill.name, skill])), [skills]);
 
@@ -78,7 +89,7 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
     React.useEffect(() => {
         const el = textRef.current;
         if (!el) return;
-        if (!collapsibleUserMessages || isExpanded) return;
+        if (!collapsibleUserMessages || effectiveExpanded) return;
 
         const checkTruncation = () => {
             setIsTruncated(el.scrollHeight > el.clientHeight);
@@ -118,7 +129,7 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
             mutationObserver.disconnect();
             resizeObserver.disconnect();
         };
-    }, [collapsibleUserMessages, textContent, isExpanded]);
+    }, [collapsibleUserMessages, textContent, effectiveExpanded]);
 
     React.useEffect(() => {
         if (!collapsibleUserMessages) {
@@ -151,11 +162,15 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
         // Measure at click time instead of trusting the observed flag: whether
         // the text is clipped right now is what decides if expanding does
         // anything, and the flag can still be catching up on a fresh message.
-        if (collapsibleUserMessages && !isExpanded && element.scrollHeight > element.clientHeight) {
+        if (collapsibleUserMessages && !effectiveExpanded && element.scrollHeight > element.clientHeight) {
             setIsTruncated(true);
-            setIsExpanded(true);
+            if (isControlled) {
+                onExpandMessage?.();
+            } else {
+                setIsExpanded(true);
+            }
         }
-    }, [collapsibleUserMessages, hasActiveSelectionInElement, isExpanded, openSkill]);
+    }, [collapsibleUserMessages, effectiveExpanded, hasActiveSelectionInElement, isControlled, onExpandMessage, openSkill]);
 
     const handleCollapse = React.useCallback((event: React.MouseEvent) => {
         event.stopPropagation();
@@ -231,7 +246,13 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
     }, [agentMention, openSkill, skillByName, textContent]);
 
     if (contextPayload) {
-        return <UserContextPart payload={contextPayload} />;
+        return (
+            <UserContextPart
+                payload={contextPayload}
+                collapsed={isCollapsed}
+                onExpand={isControlled ? onExpandMessage : () => setIsExpanded(true)}
+            />
+        );
     }
 
     if ((!textContent || textContent.trim().length === 0) && terminalContextState.contexts.length === 0) {
@@ -240,7 +261,7 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
 
     return (
         <div className="relative" key={part.id || `${messageId}-user-text`}>
-            {collapsibleUserMessages && isExpanded && (
+            {collapsibleUserMessages && !isControlled && isExpanded && (
                 <button
                     type="button"
                     onClick={handleCollapse}
@@ -253,10 +274,10 @@ const UserTextPart: React.FC<UserTextPartProps> = ({ part, messageId, agentMenti
             <div
                 className={cn(
                     "break-words font-sans typography-markdown-body",
-                    isExpanded && "pb-3",
+                    !isControlled && isExpanded && "pb-3",
                     normalizedRenderingMode === 'plain' && 'whitespace-pre-wrap',
                     isCollapsed && "line-clamp-2",
-                    collapsibleUserMessages && isTruncated && !isExpanded && "cursor-pointer"
+                    collapsibleUserMessages && isTruncated && !effectiveExpanded && "cursor-pointer"
                 )}
                 ref={textRef}
                 onClick={handleClick}

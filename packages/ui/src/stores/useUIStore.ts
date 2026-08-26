@@ -7,19 +7,11 @@ import type { ShortcutCombo } from '@/lib/shortcuts';
 import type { DraftStarterRef } from '@/lib/draftStarters';
 import { DEFAULT_MONO_FONT, DEFAULT_UI_FONT, type MonoFontOption, type UiFontOption } from '@/lib/fontOptions';
 import { getStoredMobileKeyboardMode, type MobileKeyboardMode } from '@/lib/mobileKeyboardMode';
-import { getRuntimeKey } from '@/lib/runtime-switch';
 import type { TerminalShell } from '@/lib/api/types';
 import { useFilesViewTabsStore } from './useFilesViewTabsStore';
 import { isWindowsArm64 } from '@/lib/platform';
 import { isVSCodeRuntime } from '@/lib/desktop';
 
-/**
- * The primary view on mobile and the desktop's promoted full-screen view.
- * Desktop context-panel content is not represented here.
- */
-export type WorkspaceSurface = 'chat' | 'plan' | 'git' | 'diff' | 'terminal' | 'files' | 'context' | 'diagram';
-/** @deprecated Use WorkspaceSurface. */
-export type MainTab = WorkspaceSurface;
 export type PendingDiffScope = 'working' | 'staged' | 'turn' | 'branch';
 export type ContextPanelMode = 'diff' | 'walkthrough' | 'file' | 'context' | 'plan' | 'chat' | 'browser' | 'git' | 'pr' | 'notes' | 'terminal';
 export type MermaidRenderingMode = 'svg' | 'ascii';
@@ -83,9 +75,6 @@ type PendingFileNavigation = {
   column: number;
 };
 
-export type WorkspaceSurfaceGuard = (nextSurface: WorkspaceSurface) => boolean;
-/** @deprecated Use WorkspaceSurfaceGuard. */
-export type MainTabGuard = WorkspaceSurfaceGuard;
 export type EventStreamStatus =
   | 'idle'
   | 'connecting'
@@ -137,14 +126,8 @@ const CONTEXT_PANEL_MAX_WIDTH = 1400;
 const CONTEXT_PANEL_MAX_TABS = 12;
 const CONTEXT_PANEL_MAX_LABEL_LENGTH = 120;
 const LEFT_SIDEBAR_MIN_WIDTH = 280;
-const activeSurfaceByRuntime = new Map<string, WorkspaceSurface>();
 /** Separates browser tabs opened in the same millisecond. */
 let browserTabSequence = 0;
-
-const runtimeMemoryKey = (value?: string | null): string => {
-  const key = (value ?? getRuntimeKey()).trim();
-  return key || 'default';
-};
 
 // Shared with rail/panel consumers so contextPanelByDirectory lookups agree on keys.
 export const normalizeContextPanelDirectoryKey = (value: string): string => normalizeDirectoryPath(value);
@@ -656,17 +639,9 @@ interface UIStore {
   workStatusHiddenSections: string[];
   isSessionSwitcherOpen: boolean;
   isSessionDropdownOpen: boolean;
-  activeSurface: WorkspaceSurface;
-  surfaceGuard: WorkspaceSurfaceGuard | null;
-  /** @deprecated Use activeSurface. */
-  activeMainTab: WorkspaceSurface;
-  /** @deprecated Use surfaceGuard. */
-  mainTabGuard: WorkspaceSurfaceGuard | null;
-  sidebarOpenBeforeFullscreenTab: boolean | null;
   pendingDiffFile: string | null;
   pendingDiffStaged: boolean;
   pendingDiffScope: PendingDiffScope | null;
-  pendingDiagramFile: string | null;
   pendingFileNavigation: PendingFileNavigation | null;
   pendingFileFocusPath: string | null;
   isMobile: boolean;
@@ -699,6 +674,7 @@ interface UIStore {
   eventStreamStatus: EventStreamStatus;
   eventStreamHint: string | null;
   showReasoningTraces: boolean;
+  streamingAutoFollowEnabled: boolean;
   sessionRecapEnabled: boolean;
   sessionSuggestionEnabled: boolean;
   sessionGoalEnabled: boolean;
@@ -785,6 +761,8 @@ interface UIStore {
   maxLastMessageLength: number; // chars — truncate {last_message} when summarization is off
 
   showTerminalQuickKeysOnDesktop: boolean;
+  /** Header session tabs (web/desktop), opt-in. Off keeps the plain session title. */
+  sessionTabsEnabled: boolean;
   persistChatDraft: boolean;
   showOpenCodeUpdateNotifications: boolean;
   agentControlToolEnabled: boolean;
@@ -824,7 +802,6 @@ interface UIStore {
   collapsibleUserMessages: boolean;
   stickyUserHeader: boolean;
   promptNavigatorEnabled: boolean;
-  expandedEditorToolbar: boolean;
   showSplitAssistantMessageActions: boolean;
   allowPromptingSubagentSessions: boolean;
   isExpandedInput: boolean;
@@ -867,22 +844,11 @@ interface UIStore {
   setWorkStatusHiddenSections: (sectionIds: string[]) => void;
   setSessionSwitcherOpen: (open: boolean) => void;
   setSessionDropdownOpen: (open: boolean) => void;
-  setActiveSurface: (surface: WorkspaceSurface) => void;
-  /** @deprecated Use setActiveSurface. */
-  setActiveMainTab: (surface: WorkspaceSurface) => void;
-  prepareForRuntimeSwitch: (runtimeKey?: string | null) => void;
-  restoreForRuntimeSwitch: (runtimeKey?: string | null) => void;
-  setSurfaceGuard: (guard: WorkspaceSurfaceGuard | null) => void;
-  /** @deprecated Use setSurfaceGuard. */
-  setMainTabGuard: (guard: WorkspaceSurfaceGuard | null) => void;
   setPendingDiffFile: (filePath: string | null, staged?: boolean, scope?: PendingDiffScope | null) => void;
-  setPendingDiagramFile: (filePath: string | null) => void;
   setPendingFileNavigation: (navigation: PendingFileNavigation | null) => void;
   setPendingFileFocusPath: (path: string | null) => void;
   navigateToDiff: (filePath: string, staged?: boolean, scope?: PendingDiffScope | null) => void;
   consumePendingDiffFile: () => string | null;
-  navigateToDiagram: (filePath: string) => void;
-  consumePendingDiagramFile: () => string | null;
   setIsMobile: (isMobile: boolean) => void;
   toggleCommandPalette: () => void;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -908,6 +874,7 @@ interface UIStore {
   setSettingsRemoteInstancesSelectedId: (instanceId: string | null) => void;
   setEventStreamStatus: (status: EventStreamStatus, hint?: string | null) => void;
   setShowReasoningTraces: (value: boolean) => void;
+  setStreamingAutoFollowEnabled: (value: boolean) => void;
   setSessionRecapEnabled: (value: boolean) => void;
   setSessionSuggestionEnabled: (value: boolean) => void;
   setSessionGoalEnabled: (value: boolean) => void;
@@ -970,6 +937,7 @@ interface UIStore {
   setNativeNotificationsEnabled: (value: boolean) => void;
   setNotificationMode: (mode: 'always' | 'hidden-only') => void;
   setShowTerminalQuickKeysOnDesktop: (value: boolean) => void;
+  setSessionTabsEnabled: (value: boolean) => void;
   setNotifyOnSubtasks: (value: boolean) => void;
   setDockBadgeEnabled: (value: boolean) => void;
   setNotifyOnCompletion: (value: boolean) => void;
@@ -1017,7 +985,6 @@ interface UIStore {
   setCollapsibleUserMessages: (value: boolean) => void;
   setStickyUserHeader: (value: boolean) => void;
   setPromptNavigatorEnabled: (value: boolean) => void;
-  setExpandedEditorToolbar: (value: boolean) => void;
   setShowSplitAssistantMessageActions: (value: boolean) => void;
   setAllowPromptingSubagentSessions: (value: boolean) => void;
   viewPagerPage: 'left' | 'center' | 'right';
@@ -1061,15 +1028,9 @@ export const useUIStore = create<UIStore>()(
         workStatusHiddenSections: [],
         isSessionSwitcherOpen: false,
         isSessionDropdownOpen: false,
-        activeSurface: 'chat',
-        surfaceGuard: null,
-        activeMainTab: 'chat',
-        mainTabGuard: null,
-        sidebarOpenBeforeFullscreenTab: null,
         pendingDiffFile: null,
         pendingDiffStaged: false,
         pendingDiffScope: null,
-        pendingDiagramFile: null,
         pendingFileNavigation: null,
         pendingFileFocusPath: null,
         isMobile: false,
@@ -1094,6 +1055,7 @@ export const useUIStore = create<UIStore>()(
         eventStreamStatus: 'idle',
         eventStreamHint: null,
         showReasoningTraces: true,
+        streamingAutoFollowEnabled: true,
         sessionRecapEnabled: true,
         sessionSuggestionEnabled: true,
         sessionGoalEnabled: true,
@@ -1170,6 +1132,7 @@ export const useUIStore = create<UIStore>()(
         maxLastMessageLength: 250,
 
         showTerminalQuickKeysOnDesktop: false,
+        sessionTabsEnabled: false,
         persistChatDraft: true,
         showOpenCodeUpdateNotifications: !isWindowsArm64(),
         agentControlToolEnabled: true,
@@ -1195,7 +1158,6 @@ export const useUIStore = create<UIStore>()(
         collapsibleUserMessages: true,
         stickyUserHeader: false,
         promptNavigatorEnabled: true,
-        expandedEditorToolbar: false,
         showSplitAssistantMessageActions: false,
         allowPromptingSubagentSessions: false,
         draftStartersVisible: true,
@@ -1688,45 +1650,12 @@ export const useUIStore = create<UIStore>()(
           set({ isSessionDropdownOpen: open });
         },
 
-        setSurfaceGuard: (guard) => {
-          if (get().surfaceGuard === guard) {
-            return;
-          }
-          set({ surfaceGuard: guard, mainTabGuard: guard });
-        },
-
-        setMainTabGuard: (guard) => get().setSurfaceGuard(guard),
-
-        setActiveSurface: (surface) => {
-          const guard = get().surfaceGuard;
-          if (guard && !guard(surface)) {
-            return;
-          }
-          activeSurfaceByRuntime.set(runtimeMemoryKey(), surface);
-          set({ activeSurface: surface, activeMainTab: surface });
-        },
-
-        setActiveMainTab: (surface) => get().setActiveSurface(surface),
-
-        prepareForRuntimeSwitch: (runtimeKey?: string | null) => {
-          activeSurfaceByRuntime.set(runtimeMemoryKey(runtimeKey), get().activeSurface);
-        },
-
-        restoreForRuntimeSwitch: (runtimeKey?: string | null) => {
-          const restored = activeSurfaceByRuntime.get(runtimeMemoryKey(runtimeKey)) ?? 'chat';
-          set({ activeSurface: restored, activeMainTab: restored });
-        },
-
         setPendingDiffFile: (filePath, staged = false, scope = null) => {
           set({
             pendingDiffFile: filePath,
             pendingDiffStaged: filePath ? staged : false,
             pendingDiffScope: filePath ? scope : null,
           });
-        },
-
-        setPendingDiagramFile: (filePath) => {
-          set({ pendingDiagramFile: filePath });
         },
 
         setPendingFileNavigation: (navigation) => {
@@ -1738,11 +1667,7 @@ export const useUIStore = create<UIStore>()(
         },
 
         navigateToDiff: (filePath, staged = false, scope = null) => {
-          const guard = get().surfaceGuard;
-          if (guard && !guard('diff')) {
-            return;
-          }
-          set({ pendingDiffFile: filePath, pendingDiffStaged: staged, pendingDiffScope: scope, activeSurface: 'diff', activeMainTab: 'diff' });
+          set({ pendingDiffFile: filePath, pendingDiffStaged: staged, pendingDiffScope: scope });
         },
 
         consumePendingDiffFile: () => {
@@ -1751,22 +1676,6 @@ export const useUIStore = create<UIStore>()(
             set({ pendingDiffFile: null, pendingDiffStaged: false, pendingDiffScope: null });
           }
           return pendingDiffFile;
-        },
-
-        navigateToDiagram: (filePath) => {
-          const guard = get().surfaceGuard;
-          if (guard && !guard('diagram')) {
-            return;
-          }
-          set({ pendingDiagramFile: filePath, activeSurface: 'diagram', activeMainTab: 'diagram' });
-        },
-
-        consumePendingDiagramFile: () => {
-          const { pendingDiagramFile } = get();
-          if (pendingDiagramFile) {
-            set({ pendingDiagramFile: null });
-          }
-          return pendingDiagramFile;
         },
 
         setIsMobile: (isMobile) => {
@@ -1887,6 +1796,10 @@ export const useUIStore = create<UIStore>()(
 
         setShowReasoningTraces: (value) => {
           set({ showReasoningTraces: value });
+        },
+
+        setStreamingAutoFollowEnabled: (value) => {
+          set({ streamingAutoFollowEnabled: value });
         },
 
         setSessionRecapEnabled: (value) => {
@@ -2375,6 +2288,10 @@ export const useUIStore = create<UIStore>()(
           set({ showTerminalQuickKeysOnDesktop: value });
         },
 
+        setSessionTabsEnabled: (value) => {
+          set({ sessionTabsEnabled: value });
+        },
+
         setNotifyOnSubtasks: (value) => {
           set({ notifyOnSubtasks: value });
         },
@@ -2495,9 +2412,6 @@ export const useUIStore = create<UIStore>()(
         setPromptNavigatorEnabled: (value) => {
           set({ promptNavigatorEnabled: value });
         },
-        setExpandedEditorToolbar: (value: boolean) => {
-          set({ expandedEditorToolbar: value });
-        },
         setShowSplitAssistantMessageActions: (value) => {
           set({ showSplitAssistantMessageActions: value });
         },
@@ -2549,18 +2463,25 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createDeferredSafeJSONStorage(),
-        version: 15,
+        version: 17,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
           }
           const state = persistedState as Record<string, unknown>;
 
-          // v14 -> v15: rename the historic main-tab field. The selected
-          // mobile or promoted desktop view remains unchanged.
-          if (version < 15) {
-            state.activeSurface = state.activeMainTab;
-            state.activeMainTab = state.activeSurface;
+          // v15 -> v16: the main-area surface concept is gone from persistence
+          // (the chat always owns the desktop main area; panel surfaces have
+          // their own state). Drop the historic fields so a stored non-chat
+          // value cannot rehydrate into a blank main area.
+          if (version < 16) {
+            delete state.activeMainTab;
+            delete state.activeSurface;
+          }
+
+          // v16 -> v17: the editor toolbar is always docked; the preference is gone.
+          if (version < 17) {
+            delete state.expandedEditorToolbar;
           }
 
           // v13 -> v14: the separate 'preview' surface merged into 'browser'.
@@ -2778,9 +2699,6 @@ export const useUIStore = create<UIStore>()(
           workStatusPanelEnabled: state.workStatusPanelEnabled,
           workStatusHiddenSections: state.workStatusHiddenSections,
           isSessionSwitcherOpen: state.isSessionSwitcherOpen,
-          activeSurface: state.activeSurface,
-          // Keep the deprecated mirror synchronized while consumers migrate.
-          activeMainTab: state.activeSurface,
           sidebarSection: state.sidebarSection,
           settingsPage: state.settingsPage,
           settingsHasOpenedOnce: state.settingsHasOpenedOnce,
@@ -2789,6 +2707,7 @@ export const useUIStore = create<UIStore>()(
           isSessionCreateDialogOpen: state.isSessionCreateDialogOpen,
           // Note: isSettingsDialogOpen intentionally NOT persisted
           showReasoningTraces: state.showReasoningTraces,
+          streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
           sessionRecapEnabled: state.sessionRecapEnabled,
           sessionSuggestionEnabled: state.sessionSuggestionEnabled,
           sessionGoalEnabled: state.sessionGoalEnabled,
@@ -2829,6 +2748,7 @@ export const useUIStore = create<UIStore>()(
           nativeNotificationsEnabled: state.nativeNotificationsEnabled,
           notificationMode: state.notificationMode,
           showTerminalQuickKeysOnDesktop: state.showTerminalQuickKeysOnDesktop,
+          sessionTabsEnabled: state.sessionTabsEnabled,
           notifyOnSubtasks: state.notifyOnSubtasks,
           dockBadgeEnabled: state.dockBadgeEnabled,
           notifyOnCompletion: state.notifyOnCompletion,
@@ -2872,7 +2792,6 @@ export const useUIStore = create<UIStore>()(
           collapsibleUserMessages: state.collapsibleUserMessages,
           stickyUserHeader: state.stickyUserHeader,
           promptNavigatorEnabled: state.promptNavigatorEnabled,
-          expandedEditorToolbar: state.expandedEditorToolbar,
           showSplitAssistantMessageActions: state.showSplitAssistantMessageActions,
           allowPromptingSubagentSessions: state.allowPromptingSubagentSessions,
           draftStartersVisible: state.draftStartersVisible,

@@ -19,7 +19,6 @@ import { SaveProjectPlanDialog } from '@/components/session/SaveProjectPlanDialo
 import { ForkSessionDialog, type ForkSessionExecution } from '@/components/session/ForkSessionDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
-import type { ContentChangeReason } from '@/hooks/useChatAutoFollow';
 
 import { MarkdownImageGallery, SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -419,13 +418,10 @@ interface MessageBodyProps {
     onShowPopup: (content: ToolPopupContent) => void;
     streamPhase: StreamPhase;
     allowAnimation: boolean;
-    onContentChange?: (reason?: ContentChangeReason, messageId?: string) => void;
-
     shouldShowHeader?: boolean;
     hasTextContent?: boolean;
     onCopyMessage?: () => void | boolean | Promise<void | boolean>;
     copiedMessage?: boolean;
-    onAuxiliaryContentComplete?: () => void;
     showReasoningTraces?: boolean;
     agentMention?: AgentMentionInfo;
     turnGroupingContext?: TurnGroupingContext;
@@ -488,6 +484,20 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
     const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
     const [copyHintVisible, setCopyHintVisible] = React.useState(false);
     const copyHintTimeoutRef = React.useRef<number | null>(null);
+
+    // One expanded state for the whole message: text parts and context cards
+    // collapse and expand together, with a single collapse control up here
+    // instead of one per part.
+    const collapsibleUserMessages = useUIStore((state) => state.collapsibleUserMessages);
+    const [messageExpanded, setMessageExpanded] = React.useState(false);
+    const expandMessage = React.useCallback(() => setMessageExpanded(true), []);
+    const collapseMessage = React.useCallback((event: React.MouseEvent) => {
+        event.stopPropagation();
+        setMessageExpanded(false);
+    }, []);
+    React.useEffect(() => {
+        if (!collapsibleUserMessages) setMessageExpanded(false);
+    }, [collapsibleUserMessages]);
 
     const userContentParts = React.useMemo(() => {
         return parts.filter((part) => {
@@ -716,6 +726,16 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
             style={CONTAIN_LAYOUT_STYLE}
             onTouchStart={isTouchContext && canCopyMessage && hasCopyableText ? revealCopyHint : undefined}
         >
+            {collapsibleUserMessages && messageExpanded && (
+                <button
+                    type="button"
+                    onClick={collapseMessage}
+                    className="absolute top-0 right-0 z-10 flex items-center justify-center rounded-sm bg-[var(--surface-elevated)] p-0.5 text-[var(--surface-mutedForeground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)]"
+                    aria-label={t('chat.message.userText.collapseAria')}
+                >
+                    <Icon name="arrow-up-s" className="h-3.5 w-3.5" />
+                </button>
+            )}
             <div
                 className={cn(
                     'leading-relaxed text-foreground/90 text-base overflow-x-hidden',
@@ -760,6 +780,8 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
                                 messageId={messageId}
                                 isMobile={isMobile}
                                 agentMention={mentionForPart}
+                                messageExpanded={messageExpanded}
+                                onExpandMessage={expandMessage}
                             />
                         </React.Fragment>
                     );
@@ -1086,10 +1108,8 @@ const AssistantMessageBody = React.memo(({
     onShowPopup,
     streamPhase: _streamPhase,
     allowAnimation: _allowAnimation,
-    onContentChange,
     hasTextContent = false,
     onCopyMessage,
-    onAuxiliaryContentComplete,
     showReasoningTraces = false,
     turnGroupingContext,
     errorMessage,
@@ -1396,50 +1416,6 @@ const AssistantMessageBody = React.memo(({
     const shouldHoldTools = awaitingMessageCompletion
         || (hasTools && (hasPendingTools || hasOpenStep || !allToolsFinalized));
     const shouldHoldReasoning = awaitingMessageCompletion || shouldHoldForReasoning;
-
-    const hasAuxiliaryContent = hasTools || reasoningParts.length > 0;
-    const isTextlessAssistantMessage = assistantTextParts.length === 0;
-    const auxiliaryContentComplete = hasAuxiliaryContent && isTextlessAssistantMessage && !shouldHoldTools && !shouldHoldReasoning && allToolsFinalized && reasoningComplete;
-    const auxiliaryCompletionAnnouncedRef = React.useRef(false);
-    const soloReasoningScrollTriggeredRef = React.useRef(false);
-
-    React.useEffect(() => {
-        soloReasoningScrollTriggeredRef.current = false;
-    }, [messageId]);
-
-    React.useEffect(() => {
-        if (!auxiliaryContentComplete) {
-            auxiliaryCompletionAnnouncedRef.current = false;
-            return;
-        }
-        if (auxiliaryCompletionAnnouncedRef.current) {
-            return;
-        }
-        auxiliaryCompletionAnnouncedRef.current = true;
-        onAuxiliaryContentComplete?.();
-    }, [auxiliaryContentComplete, onAuxiliaryContentComplete]);
-
-    React.useEffect(() => {
-        if (awaitingMessageCompletion) {
-            soloReasoningScrollTriggeredRef.current = false;
-            return;
-        }
-        if (hasTools) {
-            soloReasoningScrollTriggeredRef.current = false;
-            return;
-        }
-        if (reasoningParts.length === 0) {
-            return;
-        }
-        if (shouldHoldReasoning || !reasoningComplete) {
-            return;
-        }
-        if (soloReasoningScrollTriggeredRef.current) {
-            return;
-        }
-        soloReasoningScrollTriggeredRef.current = true;
-        onContentChange?.('structural');
-    }, [awaitingMessageCompletion, hasTools, onContentChange, reasoningComplete, reasoningParts.length, shouldHoldReasoning]);
 
     const hasCopyableText = Boolean(hasTextContent) && !awaitingMessageCompletion;
 
@@ -1795,7 +1771,6 @@ const AssistantMessageBody = React.memo(({
                         expandedTools={expandedTools}
                         onToggleTool={onToggleTool}
                         onShowPopup={onShowPopup}
-                        onContentChange={onContentChange}
                         streamPhase={effectiveStreamPhase}
                         showHeader={true}
                         animateRows={animateActivityRows}
@@ -1872,7 +1847,6 @@ const AssistantMessageBody = React.memo(({
                             messageId={messageId}
                             streamPhase={effectiveStreamPhase}
                             chatRenderMode={chatRenderMode}
-                            onContentChange={onContentChange}
                             onShowPopup={onShowPopup}
                         />
                     </div>
@@ -1907,7 +1881,6 @@ const AssistantMessageBody = React.memo(({
                                 messageId={messageId}
                                 streamPhase={effectiveStreamPhase}
                                 chatRenderMode={chatRenderMode}
-                                onContentChange={onContentChange}
                                 onShowPopup={onShowPopup}
                             />
                         );
@@ -1919,7 +1892,6 @@ const AssistantMessageBody = React.memo(({
                                 part={part}
                                 messageId={messageId}
                                 streamPhase={effectiveStreamPhase}
-                                onContentChange={onContentChange}
                             />
                         );
                     }
@@ -1963,7 +1935,6 @@ const AssistantMessageBody = React.memo(({
                                     onToggle={onToggleTool}
                                     isMobile={isMobile}
                                     alwaysShowActions={alwaysShowMessageActions}
-                                    onContentChange={onContentChange}
                                     onShowPopup={onShowPopup}
                                     animateTailText={animatedToolIdsLookup.has(toolPart.id)}
                                 />
@@ -2035,7 +2006,6 @@ const AssistantMessageBody = React.memo(({
         messageActionButtons,
         renderJustificationActions,
         sessionId,
-        onContentChange,
         onShowPopup,
         onToggleTool,
         shouldRenderActivityGroup,

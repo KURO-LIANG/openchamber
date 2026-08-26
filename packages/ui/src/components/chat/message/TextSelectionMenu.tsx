@@ -260,6 +260,25 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     }));
   }, [getDesktopClampedX, isMobile, position.show]);
 
+  // The desktop popup hangs above its anchor, so a tall comment box near the
+  // top of the chat can climb over the app header. On the desktop shell the
+  // header is a window drag zone, which makes the overlapped part of the
+  // textarea untouchable, so the popup is pushed down until its top edge stays
+  // inside the chat container.
+  React.useLayoutEffect(() => {
+    if (!position.show || isMobile || !menuRef.current) {
+      return;
+    }
+
+    const container = containerRef.current;
+    const minTop = (container ? container.getBoundingClientRect().top : 0) + 4;
+    const menuTop = menuRef.current.getBoundingClientRect().top;
+    if (menuTop < minTop) {
+      const delta = minTop - menuTop;
+      setPosition((prev) => ({ ...prev, y: prev.y + delta }));
+    }
+  }, [containerRef, isMobile, position.show, position.y, commentMode, commentText]);
+
   React.useEffect(() => {
     if (!position.show || isMobile) {
       return;
@@ -711,7 +730,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50"
+      className="app-region-no-drag fixed z-50"
       style={{
         left: position.x,
         top: position.y,
