@@ -4,7 +4,7 @@ import type { Event } from '@opencode-ai/sdk/v2/client';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { deriveRecentSessions } from '../recent/activitySections';
-import { applyGlobalSessionStatusEvent, useGlobalSessionStatusStore , replaceGlobalSessionStatusById} from '@/sync/global-session-status';
+import { applyGlobalSessionStatusEvent, replaceGlobalSessionStatusById } from '@/sync/global-session-status';
 import {
   buildSidebarSessionProjection,
   getDescendantIds,

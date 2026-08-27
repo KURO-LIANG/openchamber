@@ -457,13 +457,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }, [chatRenderMode, isMessageCompleted, isUser, visibleParts]);
 
 
-    const assistantTextParts = React.useMemo(() => {
-        if (isUser) {
-            return [];
-        }
-        return visibleParts.filter((part) => part.type === 'text');
-    }, [isUser, visibleParts]);
-
     const toolParts = React.useMemo(() => {
         if (isUser) {
             return [];
@@ -544,19 +537,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }, [isUser, normalizedParts]);
 
     const shouldHideUserMessage = isUser && displayParts.length === 0;
-
-    // Message is considered to have an "open step" if info.finish is not yet present
-    const hasOpenStep = typeof messageFinish !== 'string';
-
-    const shouldCoordinateRendering = React.useMemo(() => {
-        if (isUser) {
-            return false;
-        }
-        if (assistantTextParts.length === 0 || toolParts.length === 0) {
-            return hasOpenStep;
-        }
-        return true;
-    }, [assistantTextParts.length, toolParts.length, hasOpenStep, isUser]);
 
     const themeVariant = currentTheme?.metadata.variant;
     const isDarkTheme = React.useMemo(() => {

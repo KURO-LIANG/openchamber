@@ -15,7 +15,7 @@ import { useFilesViewTabsStore } from '@/stores/useFilesViewTabsStore';
 import { useTerminalStore } from '@/stores/useTerminalStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { resetStreamingState } from '@/sync/streaming';
-import { useGlobalSessionStatusStore, replaceGlobalSessionStatusById } from '@/sync/global-session-status';
+import { replaceGlobalSessionStatusById } from '@/sync/global-session-status';
 import { resetSessionOrdering } from '@/sync/session-ordering';
 import { resetSessionActivityTiming } from '@/sync/session-activity-timing';
 import { syncDesktopSettings } from '@/lib/persistence';
